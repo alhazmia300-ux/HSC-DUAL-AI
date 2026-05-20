@@ -6,7 +6,7 @@ from groq import Groq
 st.set_page_config(page_title="HSC Dual AI Tutor", page_icon="🎓", layout="centered")
 
 st.title("🎓 HSC Dual AI Tutor")
-st.subheader("Llama3 এবং Gemini-র সমন্বয়ে HSC প্রস্তুতি")
+st.subheader("Llama3 এবং Gemini-র সমন্বয়ে HSC প্রস্তুতি Created by ALhaz")
 st.write("তোমার HSC পরীক্ষার যেকোনো বিষয়ের প্রশ্ন এখানে জিজ্ঞেস করো!")
 
 # স্ট্রিমলিট সিক্রেট থেকে API Key লোড করা
