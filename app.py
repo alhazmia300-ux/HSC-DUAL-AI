@@ -100,10 +100,11 @@ if prompt:
                 if not GEMINI_API_KEY:
                     full_response = "⚠️ দুঃখিত, Streamlit Secrets-এ Gemini API Key সেট করা নেই।"
                 else:
+                    # 🛠️ [মাস্টার ফিক্স - পার্ট ১] এপিআই কনফিগারেশন করার সময় ডিফল্ট ভার্সন নির্দিষ্ট করা
                     genai.configure(api_key=GEMINI_API_KEY)
                     
-                    # 🛠️ [চূড়ান্ত ফিক্স] সম্পূর্ণ মডিউল পাথসহ মূল অফিশিয়াল স্টেবল নামটি ব্যবহার করা হয়েছে
-                    model = genai.GenerativeModel(model_name="models/gemini-1.5-flash")
+                    # 🛠️ [মাস্টার ফিক্স - পার্ট ২] স্লাশ বা এক্সট্রা পাথ ছাড়া একদম ডিরেক্ট মডার্ন মডেল নেম ব্যবহার
+                    model = genai.GenerativeModel("gemini-1.5-flash")
                     
                     if has_image_flag and user_text:
                         response = model.generate_content([user_text, image_to_send])
