@@ -1,9 +1,10 @@
 import streamlit as st
-import google.generativeai as genai
 from groq import Groq
 from PIL import Image
 import requests
 import hashlib
+import io
+import base64
 
 # পেজ সেটআপ
 st.set_page_config(page_title="HSC Dual AI Tutor", page_icon="🎓", layout="centered")
@@ -40,6 +41,54 @@ def send_telegram(user_id, q_text, model_name, has_img=False):
             requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "Markdown"})
         except Exception:
             pass
+
+# ইমেজ প্রসেস করার ফাংশন (Base64 কনভার্ট)
+def process_image(image_pil):
+    buffered = io.BytesIO()
+    image_pil.save(buffered, format="JPEG")
+    img_bytes = buffered.getvalue()
+    return base64.b64encode(img_bytes).decode("utf-8")
+
+# 🛠️ [মাস্টার ফিক্স] সরাসরি গুগলের অফিশিয়াল REST API গেটওয়ে (v1) ব্যবহার করে জেমিনি কল করা
+def call_gemini_via_api(api_key, text_prompt, image_pil=None):
+    # সরাসরি v1 প্রোডাকশন এন্ডপয়েন্ট, যা কোনোভাবেই 404 দিবে না
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+    headers = {"Content-Type": "application/json"}
+    
+    parts = []
+    
+    # যদি ছবি থাকে তবে ছবি যুক্ত করা
+    if image_pil:
+        b64_string = process_image(image_pil)
+        parts.append({
+            "inlineData": {
+                "mimeType": "image/jpeg",
+                "data": b64_string
+            }
+        })
+    
+    # টেক্সট প্রম্পট যুক্ত করা
+    final_text = text_prompt if text_prompt else "এই ছবিতে কী আছে বা কী জানতে চাওয়া হয়েছে বুঝিয়ে বলো:"
+    parts.append({"text": final_text})
+    
+    payload = {
+        "contents": [{
+            "parts": parts
+        }]
+    }
+    
+    response = requests.post(url, headers=headers, json=payload)
+    
+    if response.status_code == 200:
+        res_json = response.json()
+        try:
+            return res_json["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception:
+            return "⚠️ গুগল রেসপন্স ফরম্যাটে সমস্যা হয়েছে।"
+    elif response.status_code == 429:
+        return "⚠️ কোটা বা রেট লিমিট শেষ হয়েছে। দয়া করে ১ মিনিট পর আবার চেষ্টা করুন।"
+    else:
+        return f"❌ গুগল এআই রেসপন্স করতে পারেনি। (Error Code: {response.status_code})"
 
 # সাইডবারে মডেল চয়েস
 model_choice = st.sidebar.radio("🤖 তোমার পছন্দের AI মডেলটি বেছে নাও:", ["Gemini (Multimodal)", "Llama3 (via Groq - Text only)"])
@@ -95,25 +144,12 @@ if prompt:
         full_response = ""
         
         try:
-            # ১. জেমিনি মডেল রেসপন্স
+            # ১. জেমিনি মডেল রেসপন্স (সরাসরি API কল)
             if model_choice == "Gemini (Multimodal)":
                 if not GEMINI_API_KEY:
                     full_response = "⚠️ দুঃখিত, Streamlit Secrets-এ Gemini API Key সেট করা নেই।"
                 else:
-                    # 🛠️ [মাস্টার ফিক্স - পার্ট ১] এপিআই কনফিগারেশন করার সময় ডিফল্ট ভার্সন নির্দিষ্ট করা
-                    genai.configure(api_key=GEMINI_API_KEY)
-                    
-                    # 🛠️ [মাস্টার ফিক্স - পার্ট ২] স্লাশ বা এক্সট্রা পাথ ছাড়া একদম ডিরেক্ট মডার্ন মডেল নেম ব্যবহার
-                    model = genai.GenerativeModel("gemini-1.5-flash")
-                    
-                    if has_image_flag and user_text:
-                        response = model.generate_content([user_text, image_to_send])
-                    elif has_image_flag:
-                        response = model.generate_content(["এই ছবিতে কী আছে বা কী জানতে চাওয়া হয়েছে বুঝিয়ে বলো:", image_to_send])
-                    else:
-                        response = model.generate_content(user_text)
-                    
-                    full_response = response.text
+                    full_response = call_gemini_via_api(GEMINI_API_KEY, user_text, image_to_send)
             
             # ২. লামা৩ মডেল রেসপন্স
             elif model_choice == "Llama3 (via Groq - Text only)":
