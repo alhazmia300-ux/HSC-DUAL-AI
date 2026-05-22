@@ -98,7 +98,7 @@ def process_image(image_pil):
 
 def call_gemini_via_api(api_key, text_prompt, image_pil=None):
 
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key={api_key}"
 
     headers = {
         "Content-Type": "application/json"
