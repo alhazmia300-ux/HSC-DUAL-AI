@@ -65,17 +65,14 @@ prompt = st.chat_input(
 # ইউজার যখন মেসেজ বা ছবি সাবমিট করবে
 if prompt:
     user_text = prompt.text
-    
-    # 🛠️ [মাস্টার ফিক্স] .file এর পরিবর্তে .files ব্যবহার করে প্রথম ফাইলটি নেওয়া হয়েছে
     uploaded_files = prompt.files
     
     current_user_id = get_unique_user_id()
     image_to_send = None
     has_image_flag = False
     
-    # যদি ইউজার কোনো ফাইল আপলোড করে থাকে
     if uploaded_files and len(uploaded_files) > 0:
-        uploaded_file = uploaded_files[0]  # প্রথম ফাইলটি সিলেক্ট করা হলো
+        uploaded_file = uploaded_files[0]
         image_to_send = Image.open(uploaded_file)
         has_image_flag = True
 
@@ -104,7 +101,9 @@ if prompt:
                     full_response = "⚠️ দুঃখিত, Streamlit Secrets-এ Gemini API Key সেট করা নেই।"
                 else:
                     genai.configure(api_key=GEMINI_API_KEY)
-                    model = genai.GenerativeModel("gemini-1.5-flash-8b")
+                    
+                    # 🛠️ [চূড়ান্ত ফিক্স] সম্পূর্ণ মডিউল পাথসহ মূল অফিশিয়াল স্টেবল নামটি ব্যবহার করা হয়েছে
+                    model = genai.GenerativeModel(model_name="models/gemini-1.5-flash")
                     
                     if has_image_flag and user_text:
                         response = model.generate_content([user_text, image_to_send])
