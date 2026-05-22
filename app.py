@@ -42,17 +42,17 @@ def send_telegram(user_id, q_text, model_name, has_img=False):
         except Exception:
             pass
 
-# ইমেজ প্রসেস করার ফাংশন (Base64 কনভার্ট)
+# ইমেজ প্রসেস করার ফাংশन (Base64 কনভার্ট)
 def process_image(image_pil):
     buffered = io.BytesIO()
     image_pil.save(buffered, format="JPEG")
     img_bytes = buffered.getvalue()
     return base64.b64encode(img_bytes).decode("utf-8")
 
-# 🛠️ [মাস্টার ফিক্স] সরাসরি গুগলের অফিশিয়াল REST API গেটওয়ে (v1) ব্যবহার করে জেমিনি কল করা
+# 🛠️ [চূড়ান্ত ফিক্স] গুগলের স্ট্যান্ডার্ড REST API অ্যান্ডপয়েন্ট ইউআরএল ফরম্যাট সংশোধন
 def call_gemini_via_api(api_key, text_prompt, image_pil=None):
-    # সরাসরি v1 প্রোডাকশন এন্ডপয়েন্ট, যা কোনোভাবেই 404 দিবে না
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+    # ইউআরএল ফরম্যাটটি গুগলের অফিশিয়াল ডকুমেন্টেশন অনুযায়ী রি-রাইট করা হয়েছে
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
     
     parts = []
@@ -77,18 +77,17 @@ def call_gemini_via_api(api_key, text_prompt, image_pil=None):
         }]
     }
     
-    response = requests.post(url, headers=headers, json=payload)
-    
-    if response.status_code == 200:
-        res_json = response.json()
-        try:
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        if response.status_code == 200:
+            res_json = response.json()
             return res_json["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception:
-            return "⚠️ গুগল রেসপন্স ফরম্যাটে সমস্যা হয়েছে।"
-    elif response.status_code == 429:
-        return "⚠️ কোটা বা রেট লিমিট শেষ হয়েছে। দয়া করে ১ মিনিট পর আবার চেষ্টা করুন।"
-    else:
-        return f"❌ গুগল এআই রেসপন্স করতে পারেনি। (Error Code: {response.status_code})"
+        elif response.status_code == 429:
+            return "⚠️ কোটা বা রেট লিমিট শেষ হয়েছে। দয়া করে ১ মিনিট পর আবার চেষ্টা করুন।"
+        else:
+            return f"❌ গুগল এআই রেসপন্স করতে পারেনি। (Error Code: {response.status_code})"
+    except Exception as e:
+        return f"❌ কানেকশন এরর: {str(e)}"
 
 # সাইডবারে মডেল চয়েস
 model_choice = st.sidebar.radio("🤖 তোমার পছন্দের AI মডেলটি বেছে নাও:", ["Gemini (Multimodal)", "Llama3 (via Groq - Text only)"])
