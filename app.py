@@ -55,23 +55,27 @@ for msg in st.session_state.messages:
 
 st.markdown("---")
 
-# 🛠️ [মাস্টার ফিক্স] চ্যাট ইনপুট এবং ফাইল আপলোডারকে একসাথে মার্জ করা হয়েছে
+# অল-ইন-ওয়ান চ্যাট ইনপুট এবং ফাইল আপলোডার
 prompt = st.chat_input(
     "এখানে তোমার প্রশ্নটি লেখো বা প্লাস (+) বাটনে চেপে ছবি আপলোড করো...",
     accept_file=True,
     file_type=["jpg", "jpeg", "png"]
 )
 
-# ইউজার যখন মেসেজ টাইপ করে বা ছবি দিয়ে সেন্ড করবে
+# ইউজার যখন মেসেজ বা ছবি সাবমিট করবে
 if prompt:
     user_text = prompt.text
-    uploaded_file = prompt.file
+    
+    # 🛠️ [মাস্টার ফিক্স] .file এর পরিবর্তে .files ব্যবহার করে প্রথম ফাইলটি নেওয়া হয়েছে
+    uploaded_files = prompt.files
     
     current_user_id = get_unique_user_id()
     image_to_send = None
     has_image_flag = False
     
-    if uploaded_file:
+    # যদি ইউজার কোনো ফাইল আপলোড করে থাকে
+    if uploaded_files and len(uploaded_files) > 0:
+        uploaded_file = uploaded_files[0]  # প্রথম ফাইলটি সিলেক্ট করা হলো
         image_to_send = Image.open(uploaded_file)
         has_image_flag = True
 
@@ -85,7 +89,7 @@ if prompt:
     history_text = user_text if user_text else "[📸 ছবি পাঠানো হয়েছে]"
     st.session_state.messages.append({"role": "user", "content": history_text})
 
-    # টেলিগ্রামে নোটিফিকেশন
+    # টেলিগ্রামে নোটিফিকেশন পাঠানো
     send_telegram(current_user_id, history_text, model_choice, has_img=has_image_flag)
 
     # অ্যাসিস্ট্যান্ট রেসপন্স জেনারেট করা
@@ -100,7 +104,7 @@ if prompt:
                     full_response = "⚠️ দুঃখিত, Streamlit Secrets-এ Gemini API Key সেট করা নেই।"
                 else:
                     genai.configure(api_key=GEMINI_API_KEY)
-                    model = genai.GenerativeModel("gemini-1.5-flash-8b") # লাইটওয়েট এবং হাই-কোটা মডেল
+                    model = genai.GenerativeModel("gemini-1.5-flash-8b")
                     
                     if has_image_flag and user_text:
                         response = model.generate_content([user_text, image_to_send])
