@@ -42,7 +42,7 @@ def send_telegram(user_id, q_text, model_name, has_img=False):
             pass
 
 # সাইডবারে মডেল চয়েস
-model_choice = st.sidebar.radio("🤖 তোমার পছন্দের AI মডেলটি বেছে নাও:", ["Gemini 1.5 Flash (Multimodal)", "Llama3 (via Groq - Text only)"])
+model_choice = st.sidebar.radio("🤖 তোমার পছন্দের AI মডেলটি বেছে নাও:", ["Gemini (Multimodal)", "Llama3 (via Groq - Text only)"])
 
 # চ্যাট হিস্ট্রি চালু করা
 if "messages" not in st.session_state:
@@ -94,14 +94,14 @@ if submit_button:
             
             try:
                 # ১. জেমিনি মডেল রেসপন্স
-                if model_choice == "Gemini 1.5 Flash (Multimodal)":
+                if model_choice == "Gemini (Multimodal)":
                     if not GEMINI_API_KEY:
                         full_response = "⚠️ দুঃখিত, Streamlit Secrets-এ Gemini API Key সেট করা নেই।"
                     else:
                         genai.configure(api_key=GEMINI_API_KEY)
                         
-                        # 🛠️ [সংশোধন] মডেলের সঠিক নাম ব্যবহার করা হয়েছে
-                        model = genai.GenerativeModel("gemini-1.5-flash")
+                        # 🛠️ [মাস্টার ফিক্স] লেটেস্ট এবং ১০০% সাপোর্টেড gemini-2.5-flash মডেল ব্যবহার করা হয়েছে
+                        model = genai.GenerativeModel("gemini-2.5-flash")
                         
                         if has_image_flag and user_text:
                             response = model.generate_content([user_text, image_to_send])
@@ -115,7 +115,7 @@ if submit_button:
                 # ২. লামা৩ মডেল রেসপন্স
                 elif model_choice == "Llama3 (via Groq - Text only)":
                     if has_image_flag:
-                        full_response = "⚠️ দুঃখিত, Llama3 ছবি পড়তে পারে না। ছবির প্রশ্নের জন্য সাইডবার থেকে 'Gemini 1.5 Flash' সিলেক্ট করো।"
+                        full_response = "⚠️ দুঃখিত, Llama3 ছবি পড়তে পারে না। ছবির প্রশ্নের জন্য সাইডবার থেকে 'Gemini' সিলেক্ট করো।"
                     elif not GROQ_API_KEY:
                         full_response = "⚠️ দুঃখিত, Streamlit Secrets-এ Groq API Key সেট করা নেই।"
                     else:
