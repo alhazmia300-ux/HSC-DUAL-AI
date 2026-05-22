@@ -8,6 +8,8 @@ st.set_page_config(page_title="HSC Dual AI Tutor", page_icon="🎓", layout="cen
 st.title("🎓 HSC Dual AI Tutor")
 st.subheader("Llama3 এবং Gemini-র সমন্বয়ে HSC প্রস্তুতি")
 st.write("তোমার HSC পরীক্ষার যেকোনো বিষয়ের প্রশ্ন এখানে জিজ্ঞেস করো!")
+st.caption("🚀 Created by ALhaz")
+
 
 # স্ট্রিমলিট সিক্রেট থেকে API Key লোড করা
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
