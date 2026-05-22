@@ -55,80 +55,79 @@ for msg in st.session_state.messages:
 
 st.markdown("---")
 
-# স্ট্রীমলিট ফর্ম যাতে ছবি সিলেক্ট করলেই রান না হয়ে যায়
-with st.form(key="chat_form", clear_on_submit=False):
-    user_text = st.text_input("এখানে তোমার প্রশ্নটি লেখো... (যেমন: ছবির লেখাগুলো বাংলায় ট্রান্সলেট করো)")
-    uploaded_file = st.file_uploader("বইয়ের ছবি আপলোড করো (ঐচ্ছিক):", type=["jpg", "jpeg", "png"])
-    submit_button = st.form_submit_button(label="🚀 Ask AI Tutor")
+# 🛠️ [মাস্টার ফিক্স] চ্যাট ইনপুট এবং ফাইল আপলোডারকে একসাথে মার্জ করা হয়েছে
+prompt = st.chat_input(
+    "এখানে তোমার প্রশ্নটি লেখো বা প্লাস (+) বাটনে চেপে ছবি আপলোড করো...",
+    accept_file=True,
+    file_type=["jpg", "jpeg", "png"]
+)
 
-# যখন ইউজার বাটনে ক্লিক করবে, তখনই শুধু প্রসেস শুরু হবে
-if submit_button:
-    if not user_text and not uploaded_file:
-        st.warning("⚠️ দয়া করে একটি প্রশ্ন লিখো অথবা ছবি আপলোড করো!")
-    else:
-        current_user_id = get_unique_user_id()
-        image_to_send = None
-        has_image_flag = False
+# ইউজার যখন মেসেজ টাইপ করে বা ছবি দিয়ে সেন্ড করবে
+if prompt:
+    user_text = prompt.text
+    uploaded_file = prompt.file
+    
+    current_user_id = get_unique_user_id()
+    image_to_send = None
+    has_image_flag = False
+    
+    if uploaded_file:
+        image_to_send = Image.open(uploaded_file)
+        has_image_flag = True
+
+    # ইউজারের ইনপুট স্ক্রিনে চ্যাট বাবল হিসেবে দেখানো
+    with st.chat_message("user"):
+        if has_image_flag:
+            st.image(image_to_send, caption="আপলোড করা বইয়ের ছবি", width=250)
+        st.markdown(user_text if user_text else "[শুধুমাত্র ছবি দিয়ে প্রশ্ন করা হয়েছে]")
+    
+    # চ্যাট মেমোরিতে সেভ করা
+    history_text = user_text if user_text else "[📸 ছবি পাঠানো হয়েছে]"
+    st.session_state.messages.append({"role": "user", "content": history_text})
+
+    # টেলিগ্রামে নোটিফিকেশন
+    send_telegram(current_user_id, history_text, model_choice, has_img=has_image_flag)
+
+    # অ্যাসিস্ট্যান্ট রেসপন্স জেনারেট করা
+    with st.chat_message("assistant"):
+        response_placeholder = st.empty()
+        full_response = ""
         
-        if uploaded_file:
-            image_to_send = Image.open(uploaded_file)
-            has_image_flag = True
+        try:
+            # ১. জেমিনি মডেল রেসপন্স
+            if model_choice == "Gemini (Multimodal)":
+                if not GEMINI_API_KEY:
+                    full_response = "⚠️ দুঃখিত, Streamlit Secrets-এ Gemini API Key সেট করা নেই।"
+                else:
+                    genai.configure(api_key=GEMINI_API_KEY)
+                    model = genai.GenerativeModel("gemini-1.5-flash-8b") # লাইটওয়েট এবং হাই-কোটা মডেল
+                    
+                    if has_image_flag and user_text:
+                        response = model.generate_content([user_text, image_to_send])
+                    elif has_image_flag:
+                        response = model.generate_content(["এই ছবিতে কী আছে বা কী জানতে চাওয়া হয়েছে বুঝিয়ে বলো:", image_to_send])
+                    else:
+                        response = model.generate_content(user_text)
+                    
+                    full_response = response.text
+            
+            # ২. লামা৩ মডেল রেসপন্স
+            elif model_choice == "Llama3 (via Groq - Text only)":
+                if has_image_flag:
+                    full_response = "⚠️ দুঃখিত, Llama3 ছবি পড়তে পারে না। ছবির প্রশ্নের জন্য সাইডবার থেকে 'Gemini' সিলেক্ট করো।"
+                elif not GROQ_API_KEY:
+                    full_response = "⚠️ দুঃখিত, Streamlit Secrets-এ Groq API Key সেট করা নেই।"
+                else:
+                    client = Groq(api_key=GROQ_API_KEY)
+                    completion = client.chat.completions.create(
+                        model="llama3-8b-8192",
+                        messages=[{"role": "user", "content": user_text}]
+                    )
+                    full_response = completion.choices[0].message.content
 
-        # ইউজারের ইনপুট স্ক্রিনে দেখানো
-        with st.chat_message("user"):
-            if has_image_flag:
-                st.image(image_to_send, caption="আপলোড করা বইয়ের ছবি", width=250)
-            st.markdown(user_text if user_text else "[শুধুমাত্র ছবি দিয়ে প্রশ্ন করা হয়েছে]")
+        except Exception as e:
+            full_response = f"❌ একটি ইন্টারনাল এরর ঘটেছে: {str(e)}"
         
-        # চ্যাট মেমোরিতে শুধু টেক্সট সেভ করা
-        history_text = user_text if user_text else "[📸 ছবি পাঠানো হয়েছে]"
-        st.session_state.messages.append({"role": "user", "content": history_text})
-
-        # সিক্রেট নোটিফিকেশন টেলিগ্রামে পাঠানো
-        send_telegram(current_user_id, history_text, model_choice, has_img=has_image_flag)
-
-        # অ্যাসিস্ট্যান্ট রেসপন্স তৈরি করা
-        with st.chat_message("assistant"):
-            response_placeholder = st.empty()
-            full_response = ""
-            
-            try:
-                # ১. জেমিনি মডেল রেসপন্স
-                if model_choice == "Gemini (Multimodal)":
-                    if not GEMINI_API_KEY:
-                        full_response = "⚠️ দুঃখিত, Streamlit Secrets-এ Gemini API Key সেট করা নেই।"
-                    else:
-                        genai.configure(api_key=GEMINI_API_KEY)
-                        
-                        # 🛠️ [মাস্টার ফিক্স] লেটেস্ট এবং ১০০% সাপোর্টেড gemini-2.5-flash মডেল ব্যবহার করা হয়েছে
-                        model = genai.GenerativeModel("gemini-2.5-flash")
-                        
-                        if has_image_flag and user_text:
-                            response = model.generate_content([user_text, image_to_send])
-                        elif has_image_flag:
-                            response = model.generate_content(["এই ছবিতে কী আছে বা কী জানতে চাওয়া হয়েছে বুঝিয়ে বলো:", image_to_send])
-                        else:
-                            response = model.generate_content(user_text)
-                        
-                        full_response = response.text
-                
-                # ২. লামা৩ মডেল রেসপন্স
-                elif model_choice == "Llama3 (via Groq - Text only)":
-                    if has_image_flag:
-                        full_response = "⚠️ দুঃখিত, Llama3 ছবি পড়তে পারে না। ছবির প্রশ্নের জন্য সাইডবার থেকে 'Gemini' সিলেক্ট করো।"
-                    elif not GROQ_API_KEY:
-                        full_response = "⚠️ দুঃখিত, Streamlit Secrets-এ Groq API Key সেট করা নেই।"
-                    else:
-                        client = Groq(api_key=GROQ_API_KEY)
-                        completion = client.chat.completions.create(
-                            model="llama3-8b-8192",
-                            messages=[{"role": "user", "content": user_text}]
-                        )
-                        full_response = completion.choices[0].message.content
-
-            except Exception as e:
-                full_response = f"❌ একটি ইন্টারনাল এরর ঘটেছে: {str(e)}"
-            
-            # স্ক্রিনে ফাইনাল উত্তর দেখানো এবং মেমোরিতে রাখা
-            response_placeholder.markdown(full_response)
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
+        # স্ক্রিনে ফাইনাল উত্তর দেখানো এবং মেমোরিতে রাখা
+        response_placeholder.markdown(full_response)
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
