@@ -6,9 +6,9 @@ import hashlib
 import io
 import base64
 
-# =========================
-# PAGE SETUP
-# =========================
+# =========================================
+# PAGE CONFIG
+# =========================================
 
 st.set_page_config(
     page_title="HSC Dual AI Tutor",
@@ -16,35 +16,51 @@ st.set_page_config(
     layout="centered"
 )
 
+# =========================================
+# UI
+# =========================================
+
 st.title("🎓 HSC Dual AI Tutor")
+
 st.subheader("Llama3 এবং Gemini-র সমন্বয়ে HSC প্রস্তুতি")
+
 st.write("তোমার HSC পরীক্ষার যেকোনো বিষয়ের প্রশ্ন এখানে জিজ্ঞেস করো!")
+
 st.caption("🚀 Created by ALhaz")
 
-# =========================
-# LOAD SECRETS
-# =========================
+# =========================================
+# LOAD API KEYS
+# =========================================
 
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
+
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY")
+
 TELEGRAM_BOT_TOKEN = st.secrets.get("TELEGRAM_BOT_TOKEN")
+
 TELEGRAM_CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID")
 
-# =========================
+# =========================================
 # UNIQUE USER ID
-# =========================
+# =========================================
 
 def get_unique_user_id():
+
     try:
-        session_data = str(st.session_state)
-        user_hash = hashlib.md5(session_data.encode()).hexdigest()[:6]
+
+        raw_data = str(st.session_state)
+
+        user_hash = hashlib.md5(raw_data.encode()).hexdigest()[:6]
+
         return f"User_{user_hash}"
+
     except:
+
         return "User_Unknown"
 
-# =========================
-# TELEGRAM NOTIFICATION
-# =========================
+# =========================================
+# TELEGRAM FUNCTION
+# =========================================
 
 def send_telegram(user_id, q_text, model_name, has_img=False):
 
@@ -67,6 +83,7 @@ def send_telegram(user_id, q_text, model_name, has_img=False):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
 
     try:
+
         requests.post(
             url,
             json={
@@ -75,12 +92,13 @@ def send_telegram(user_id, q_text, model_name, has_img=False):
             },
             timeout=10
         )
+
     except:
         pass
 
-# =========================
-# IMAGE TO BASE64
-# =========================
+# =========================================
+# IMAGE PROCESS
+# =========================================
 
 def process_image(image_pil):
 
@@ -92,13 +110,13 @@ def process_image(image_pil):
 
     return base64.b64encode(img_bytes).decode("utf-8")
 
-# =========================
-# GEMINI API FUNCTION
-# =========================
+# =========================================
+# GEMINI API
+# =========================================
 
 def call_gemini_via_api(api_key, text_prompt, image_pil=None):
 
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
 
     headers = {
         "Content-Type": "application/json"
@@ -107,6 +125,7 @@ def call_gemini_via_api(api_key, text_prompt, image_pil=None):
     parts = []
 
     # IMAGE
+
     if image_pil:
 
         b64_string = process_image(image_pil)
@@ -119,6 +138,7 @@ def call_gemini_via_api(api_key, text_prompt, image_pil=None):
         })
 
     # TEXT
+
     final_text = text_prompt if text_prompt else "এই ছবিটি বিশ্লেষণ করে ব্যাখ্যা করো।"
 
     parts.append({
@@ -142,9 +162,6 @@ def call_gemini_via_api(api_key, text_prompt, image_pil=None):
             timeout=60
         )
 
-        # DEBUG (চাইলে remove করতে পারো)
-        # st.write(response.text)
-
         if response.status_code == 200:
 
             data = response.json()
@@ -157,26 +174,32 @@ def call_gemini_via_api(api_key, text_prompt, image_pil=None):
             return candidates[0]["content"]["parts"][0]["text"]
 
         elif response.status_code == 401:
+
             return "❌ Invalid Gemini API Key"
 
         elif response.status_code == 403:
-            return "❌ Permission denied অথবা billing সমস্যা"
+
+            return "❌ Permission denied"
 
         elif response.status_code == 404:
+
             return "❌ Gemini model পাওয়া যায়নি"
 
         elif response.status_code == 429:
-            return "⚠️ Rate limit exceeded"
+
+            return "⚠️ Gemini API limit শেষ হয়েছে"
 
         else:
+
             return f"❌ Error {response.status_code}\n\n{response.text}"
 
     except Exception as e:
-        return f"❌ Error: {str(e)}"
 
-# =========================
-# SIDEBAR MODEL CHOICE
-# =========================
+        return f"❌ Gemini Error:\n{str(e)}"
+
+# =========================================
+# SIDEBAR
+# =========================================
 
 model_choice = st.sidebar.radio(
     "🤖 AI Model নির্বাচন করো",
@@ -186,25 +209,27 @@ model_choice = st.sidebar.radio(
     ]
 )
 
-# =========================
+# =========================================
 # CHAT HISTORY
-# =========================
+# =========================================
 
 if "messages" not in st.session_state:
+
     st.session_state.messages = []
 
-# পুরোনো মেসেজ দেখানো
+# SHOW OLD CHATS
 
 for msg in st.session_state.messages:
 
     with st.chat_message(msg["role"]):
+
         st.markdown(msg["content"])
 
 st.markdown("---")
 
-# =========================
+# =========================================
 # CHAT INPUT
-# =========================
+# =========================================
 
 prompt = st.chat_input(
     "এখানে প্রশ্ন লেখো অথবা ছবি আপলোড করো...",
@@ -212,9 +237,9 @@ prompt = st.chat_input(
     file_type=["jpg", "jpeg", "png"]
 )
 
-# =========================
-# HANDLE USER INPUT
-# =========================
+# =========================================
+# MAIN CHAT LOGIC
+# =========================================
 
 if prompt:
 
@@ -243,6 +268,7 @@ if prompt:
     with st.chat_message("user"):
 
         if has_image_flag:
+
             st.image(
                 image_to_send,
                 caption="আপলোড করা ছবি",
@@ -254,7 +280,7 @@ if prompt:
             else "[📸 শুধুমাত্র ছবি পাঠানো হয়েছে]"
         )
 
-    # SAVE USER MESSAGE
+    # SAVE USER CHAT
 
     history_text = user_text if user_text else "[📸 ছবি পাঠানো হয়েছে]"
 
@@ -263,7 +289,7 @@ if prompt:
         "content": history_text
     })
 
-    # TELEGRAM SEND
+    # SEND TELEGRAM
 
     send_telegram(
         current_user_id,
@@ -272,9 +298,9 @@ if prompt:
         has_img=has_image_flag
     )
 
-    # =========================
+    # =========================================
     # ASSISTANT RESPONSE
-    # =========================
+    # =========================================
 
     with st.chat_message("assistant"):
 
@@ -284,9 +310,9 @@ if prompt:
 
         try:
 
-            # =========================
+            # =========================================
             # GEMINI
-            # =========================
+            # =========================================
 
             if model_choice == "Gemini (Multimodal)":
 
@@ -302,9 +328,9 @@ if prompt:
                         image_to_send
                     )
 
-            # =========================
-            # LLAMA3
-            # =========================
+            # =========================================
+            # LLAMA3 / GROQ
+            # =========================================
 
             elif model_choice == "Llama3 (Groq - Text Only)":
 
@@ -326,13 +352,16 @@ if prompt:
                     )
 
                     completion = client.chat.completions.create(
-                        model="llama3-8b-8192",
+
+                        model="llama-3.3-70b-versatile",
+
                         messages=[
                             {
                                 "role": "user",
                                 "content": user_text
                             }
                         ]
+
                     )
 
                     full_response = completion.choices[0].message.content
