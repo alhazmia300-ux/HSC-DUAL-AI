@@ -107,7 +107,7 @@ def call_gemini(api_key, text_prompt, image_pil=None):
         genai.configure(api_key=api_key)
 
         # Load Model
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash-latest")
 
         # =========================================
         # IMAGE + TEXT
