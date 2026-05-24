@@ -1,10 +1,9 @@
 import streamlit as st
 from groq import Groq
 from PIL import Image
+import google.generativeai as genai
 import requests
 import hashlib
-import io
-import base64
 
 # =========================================
 # PAGE CONFIG
@@ -17,7 +16,7 @@ st.set_page_config(
 )
 
 # =========================================
-# HEADER
+# UI
 # =========================================
 
 st.title("🎓 HSC Dual AI Tutor")
@@ -59,7 +58,7 @@ def get_unique_user_id():
         return "User_Unknown"
 
 # =========================================
-# TELEGRAM NOTIFICATION
+# TELEGRAM FUNCTION
 # =========================================
 
 def send_telegram(user_id, q_text, model_name, has_img=False):
@@ -97,127 +96,52 @@ def send_telegram(user_id, q_text, model_name, has_img=False):
         pass
 
 # =========================================
-# IMAGE TO BASE64
+# GEMINI FUNCTION (SDK VERSION)
 # =========================================
 
-def process_image(image_pil):
-
-    buffered = io.BytesIO()
-
-    image_pil.save(buffered, format="JPEG")
-
-    img_bytes = buffered.getvalue()
-
-    return base64.b64encode(img_bytes).decode("utf-8")
-
-# =========================================
-# GEMINI API FUNCTION
-# =========================================
-
-def call_gemini_via_api(api_key, text_prompt, image_pil=None):
-
-    # ✅ WORKING GEMINI URL
-
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-
-    headers = {
-        "Content-Type": "application/json"
-    }
-
-    parts = []
-
-    # =========================================
-    # IMAGE
-    # =========================================
-
-    if image_pil:
-
-        b64_string = process_image(image_pil)
-
-        parts.append({
-            "inlineData": {
-                "mimeType": "image/jpeg",
-                "data": b64_string
-            }
-        })
-
-    # =========================================
-    # TEXT
-    # =========================================
-
-    final_text = (
-        text_prompt
-        if text_prompt
-        else "এই ছবিটি বিশ্লেষণ করে ব্যাখ্যা করো।"
-    )
-
-    parts.append({
-        "text": final_text
-    })
-
-    payload = {
-        "contents": [
-            {
-                "parts": parts
-            }
-        ]
-    }
+def call_gemini(api_key, text_prompt, image_pil=None):
 
     try:
 
-        response = requests.post(
-            url,
-            headers=headers,
-            json=payload,
-            timeout=60
-        )
+        # Configure API
+        genai.configure(api_key=api_key)
+
+        # Load Model
+        model = genai.GenerativeModel("gemini-1.5-flash")
 
         # =========================================
-        # SUCCESS
+        # IMAGE + TEXT
         # =========================================
 
-        if response.status_code == 200:
+        if image_pil:
 
-            data = response.json()
+            prompt_parts = []
 
-            candidates = data.get("candidates")
+            if text_prompt:
+                prompt_parts.append(text_prompt)
 
-            if not candidates:
+            prompt_parts.append(image_pil)
 
-                return "❌ Gemini কোনো উত্তর দেয়নি"
-
-            return candidates[0]["content"]["parts"][0]["text"]
+            response = model.generate_content(prompt_parts)
 
         # =========================================
-        # ERRORS
+        # TEXT ONLY
         # =========================================
-
-        elif response.status_code == 401:
-
-            return "❌ Invalid Gemini API Key"
-
-        elif response.status_code == 403:
-
-            return "❌ Permission denied"
-
-        elif response.status_code == 404:
-
-            return "❌ Gemini model পাওয়া যায়নি"
-
-        elif response.status_code == 429:
-
-            return "⚠️ Gemini rate limit exceeded"
 
         else:
 
-            return f"❌ Error {response.status_code}\n\n{response.text}"
+            response = model.generate_content(
+                text_prompt if text_prompt else "Hi"
+            )
+
+        return response.text
 
     except Exception as e:
 
         return f"❌ Gemini Error:\n{str(e)}"
 
 # =========================================
-# SIDEBAR MODEL SELECT
+# SIDEBAR
 # =========================================
 
 model_choice = st.sidebar.radio(
@@ -354,7 +278,7 @@ if prompt:
 
                 else:
 
-                    full_response = call_gemini_via_api(
+                    full_response = call_gemini(
                         GEMINI_API_KEY,
                         user_text,
                         image_to_send
