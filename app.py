@@ -118,7 +118,7 @@ def call_gemini_via_api(api_key, text_prompt, image_pil=None):
 
     # ✅ WORKING GEMINI URL
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
 
     headers = {
         "Content-Type": "application/json"
