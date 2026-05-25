@@ -7,3 +7,4 @@ PyPDF2
 firebase-admin
 streamlit-authenticator
 pyrebase4
+streamlit-javascript
