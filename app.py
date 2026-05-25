@@ -6,6 +6,11 @@ import requests
 import hashlib
 import time
 import PyPDF2
+import firebase_admin
+import json
+
+from firebase_admin import credentials
+from firebase_admin import firestore
 
 # =========================================
 # PAGE CONFIG
@@ -62,7 +67,7 @@ st.write("যেকোনো HSC বিষয়ের প্রশ্ন করো
 st.caption("🚀 Created by ALhaz")
 
 # =========================================
-# LOAD API KEYS
+# LOAD SECRETS
 # =========================================
 
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
@@ -72,6 +77,94 @@ GROQ_API_KEY = st.secrets.get("GROQ_API_KEY")
 TELEGRAM_BOT_TOKEN = st.secrets.get("TELEGRAM_BOT_TOKEN")
 
 TELEGRAM_CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID")
+
+# =========================================
+# FIREBASE INIT
+# =========================================
+
+if not firebase_admin._apps:
+
+    firebase_json = json.loads(
+        st.secrets["FIREBASE_CREDENTIALS"]
+    )
+
+    cred = credentials.Certificate(firebase_json)
+
+    firebase_admin.initialize_app(cred)
+
+db = firestore.client()
+
+# =========================================
+# USER ID
+# =========================================
+
+def get_unique_user_id():
+
+    try:
+
+        raw_data = str(st.context.headers)
+
+        user_hash = hashlib.md5(
+            raw_data.encode()
+        ).hexdigest()[:10]
+
+        return f"user_{user_hash}"
+
+    except:
+
+        return "user_unknown"
+
+USER_ID = get_unique_user_id()
+
+# =========================================
+# FIREBASE SAVE CHAT
+# =========================================
+
+def save_message(role, content):
+
+    db.collection("chat_history").add({
+        "user_id": USER_ID,
+        "role": role,
+        "content": content,
+        "timestamp": firestore.SERVER_TIMESTAMP
+    })
+
+# =========================================
+# FIREBASE LOAD CHAT
+# =========================================
+
+def load_chat_history():
+
+    chats = db.collection("chat_history") \
+        .where("user_id", "==", USER_ID) \
+        .stream()
+
+    messages = []
+
+    for chat in chats:
+
+        data = chat.to_dict()
+
+        messages.append({
+            "role": data["role"],
+            "content": data["content"]
+        })
+
+    return messages
+
+# =========================================
+# FIREBASE CLEAR CHAT
+# =========================================
+
+def clear_chat_history():
+
+    chats = db.collection("chat_history") \
+        .where("user_id", "==", USER_ID) \
+        .stream()
+
+    for chat in chats:
+
+        chat.reference.delete()
 
 # =========================================
 # SIDEBAR
@@ -139,22 +232,16 @@ subject = st.sidebar.selectbox(
 )
 
 # =========================================
-# USER ID
+# CLEAR CHAT BUTTON
 # =========================================
 
-def get_unique_user_id():
+if st.sidebar.button("🗑️ Clear Chat"):
 
-    try:
+    clear_chat_history()
 
-        raw_data = str(st.session_state)
+    st.session_state.messages = []
 
-        user_hash = hashlib.md5(raw_data.encode()).hexdigest()[:6]
-
-        return f"User_{user_hash}"
-
-    except:
-
-        return "User_Unknown"
+    st.rerun()
 
 # =========================================
 # TELEGRAM NOTIFICATION
@@ -204,23 +291,21 @@ def call_gemini(api_key, text_prompt, image_pil=None):
 
         client = genai.Client(api_key=api_key)
 
-        # IMAGE + TEXT
         if image_pil:
 
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=[
-                    text_prompt if text_prompt else "এই ছবিটি ব্যাখ্যা করো",
+                    text_prompt,
                     image_pil
                 ]
             )
 
-        # TEXT ONLY
         else:
 
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
-                contents=text_prompt if text_prompt else "Hi"
+                contents=text_prompt
             )
 
         return response.text
@@ -229,8 +314,7 @@ def call_gemini(api_key, text_prompt, image_pil=None):
 
         error_text = str(e)
 
-        # FALLBACK TO GROQ
-        if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
+        if "429" in error_text:
 
             try:
 
@@ -243,20 +327,19 @@ def call_gemini(api_key, text_prompt, image_pil=None):
                     messages=[
                         {
                             "role": "user",
-                            "content": text_prompt if text_prompt else "Hi"
+                            "content": text_prompt
                         }
                     ]
                 )
 
                 return (
                     "⚠️ Gemini quota শেষ হয়েছে।\n\n"
-                    "নিচে Llama3 এর উত্তর দেওয়া হলো:\n\n"
                     + completion.choices[0].message.content
                 )
 
             except Exception as groq_error:
 
-                return f"❌ Gemini quota শেষ এবং Groq fallback failed:\n{str(groq_error)}"
+                return f"❌ Fallback failed:\n{str(groq_error)}"
 
         return f"❌ Gemini Error:\n{error_text}"
 
@@ -283,12 +366,12 @@ if st.sidebar.button("📝 Generate MCQ"):
     st.write(mcq_response)
 
 # =========================================
-# CHAT HISTORY
+# LOAD CHAT HISTORY
 # =========================================
 
 if "messages" not in st.session_state:
 
-    st.session_state.messages = []
+    st.session_state.messages = load_chat_history()
 
 # =========================================
 # SHOW CHAT HISTORY
@@ -321,8 +404,6 @@ if prompt:
     user_text = prompt.text
 
     uploaded_files = prompt.files
-
-    current_user_id = get_unique_user_id()
 
     image_to_send = None
 
@@ -375,7 +456,7 @@ if prompt:
             st.success("✅ PDF সফলভাবে আপলোড হয়েছে")
 
     # =========================================
-    # PDF CONTENT ADD
+    # ADD PDF CONTENT
     # =========================================
 
     if pdf_text:
@@ -414,12 +495,14 @@ if prompt:
         "content": user_text
     })
 
+    save_message("user", user_text)
+
     # =========================================
     # SEND TELEGRAM
     # =========================================
 
     send_telegram(
-        current_user_id,
+        USER_ID,
         user_text,
         model_choice,
         has_file=has_file_flag
@@ -510,3 +593,5 @@ if prompt:
             "role": "assistant",
             "content": full_response
         })
+
+        save_message("assistant", full_response)
