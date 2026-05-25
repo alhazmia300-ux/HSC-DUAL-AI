@@ -18,21 +18,60 @@ st.set_page_config(
 )
 
 # =========================================
-# DARK MODE UI
+# MODERN DARK UI
 # =========================================
 
 st.markdown("""
 <style>
 
+/* Main App */
 .stApp {
-    background-color: #0E1117;
+    background: #0f172a;
     color: white;
 }
 
+/* Chat Message */
 [data-testid="stChatMessage"] {
-    border-radius: 15px;
-    padding: 12px;
-    margin-bottom: 10px;
+    background: #111827;
+    border: 1px solid #1f2937;
+    border-radius: 18px;
+    padding: 14px;
+    margin-bottom: 12px;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background: #111827;
+}
+
+/* Chat Input */
+.stChatInputContainer {
+    background: #111827;
+    border-top: 1px solid #1f2937;
+}
+
+/* Buttons */
+.stButton>button {
+    border-radius: 12px;
+    background: #2563eb;
+    color: white;
+    border: none;
+}
+
+/* Selectbox */
+.stSelectbox div[data-baseweb="select"] {
+    background-color: #1f2937;
+    border-radius: 10px;
+}
+
+/* Radio */
+.stRadio label {
+    color: white !important;
+}
+
+/* Text */
+h1, h2, h3, h4, h5, h6, p, span, label {
+    color: white !important;
 }
 
 </style>
@@ -51,7 +90,7 @@ st.write("তোমার HSC পরীক্ষার যেকোনো বি
 st.caption("🚀 Created by ALhaz")
 
 # =========================================
-# LOAD API KEYS
+# LOAD SECRETS
 # =========================================
 
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
@@ -115,7 +154,7 @@ def send_telegram(user_id, q_text, model_name, has_img=False):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
 
-    img_status = "📸 ছবি" if has_img else "📝 টেক্সট"
+    img_status = "📸 File" if has_img else "📝 Text"
 
     msg = f"""
 🔔 নতুন প্রশ্ন!
@@ -211,30 +250,6 @@ def call_gemini(api_key, text_prompt, image_pil=None):
         return f"❌ Gemini Error:\n{error_text}"
 
 # =========================================
-# PDF UPLOAD
-# =========================================
-
-uploaded_pdf = st.file_uploader(
-    "📄 PDF Upload করো",
-    type=["pdf"]
-)
-
-pdf_text = ""
-
-if uploaded_pdf:
-
-    reader = PyPDF2.PdfReader(uploaded_pdf)
-
-    for page in reader.pages:
-
-        extracted = page.extract_text()
-
-        if extracted:
-            pdf_text += extracted
-
-    st.success("✅ PDF সফলভাবে আপলোড হয়েছে")
-
-# =========================================
 # MCQ GENERATOR
 # =========================================
 
@@ -243,7 +258,7 @@ if st.sidebar.button("📝 Generate MCQ"):
     mcq_prompt = f"""
     {subject} বিষয়ের HSC level এর
     10টি MCQ তৈরি করো।
-    
+
     প্রতিটির সঠিক উত্তর দাও।
     """
 
@@ -264,7 +279,9 @@ if "messages" not in st.session_state:
 
     st.session_state.messages = []
 
-# SHOW OLD MESSAGES
+# =========================================
+# SHOW OLD CHATS
+# =========================================
 
 for msg in st.session_state.messages:
 
@@ -279,9 +296,9 @@ st.markdown("---")
 # =========================================
 
 prompt = st.chat_input(
-    "এখানে প্রশ্ন লেখো অথবা ছবি আপলোড করো...",
+    "প্রশ্ন লেখো অথবা PDF / ছবি আপলোড করো...",
     accept_file=True,
-    file_type=["jpg", "jpeg", "png"]
+    file_type=["jpg", "jpeg", "png", "pdf"]
 )
 
 # =========================================
@@ -300,38 +317,59 @@ if prompt:
 
     has_image_flag = False
 
+    pdf_text = ""
+
     # =========================================
     # SUBJECT TUTOR MODE
     # =========================================
 
     user_text = f"""
-    তুমি একজন {subject} বিষয়ের HSC শিক্ষক।
+তুমি একজন {subject} বিষয়ের HSC শিক্ষক।
 
-    সহজ ভাষায় উত্তর দাও।
+সহজ ভাষায় উত্তর দাও।
 
-    প্রশ্ন:
-    {user_text}
-    """
-
-    # =========================================
-    # PDF TEXT ADD
-    # =========================================
-
-    if pdf_text:
-
-        user_text += f"\n\nPDF Content:\n{pdf_text[:4000]}"
+প্রশ্ন:
+{user_text}
+"""
 
     # =========================================
-    # IMAGE HANDLE
+    # FILE HANDLE
     # =========================================
 
     if uploaded_files and len(uploaded_files) > 0:
 
         uploaded_file = uploaded_files[0]
 
-        image_to_send = Image.open(uploaded_file)
+        file_name = uploaded_file.name.lower()
 
-        has_image_flag = True
+        # IMAGE
+        if file_name.endswith((".jpg", ".jpeg", ".png")):
+
+            image_to_send = Image.open(uploaded_file)
+
+            has_image_flag = True
+
+        # PDF
+        elif file_name.endswith(".pdf"):
+
+            reader = PyPDF2.PdfReader(uploaded_file)
+
+            for page in reader.pages:
+
+                extracted = page.extract_text()
+
+                if extracted:
+                    pdf_text += extracted
+
+            st.success("✅ PDF সফলভাবে আপলোড হয়েছে")
+
+    # =========================================
+    # ADD PDF CONTENT
+    # =========================================
+
+    if pdf_text:
+
+        user_text += f"\n\nPDF Content:\n{pdf_text[:4000]}"
 
     # =========================================
     # SHOW USER MESSAGE
@@ -347,7 +385,11 @@ if prompt:
                 width=250
             )
 
-        st.markdown(prompt.text if prompt.text else "[📸 শুধুমাত্র ছবি পাঠানো হয়েছে]")
+        if pdf_text:
+
+            st.info("📄 PDF আপলোড করা হয়েছে")
+
+        st.markdown(prompt.text if prompt.text else "[ফাইল পাঠানো হয়েছে]")
 
     # =========================================
     # SAVE USER MESSAGE
@@ -418,7 +460,6 @@ if prompt:
 
                         model="llama-3.3-70b-versatile",
 
-                        # CHAT MEMORY
                         messages=st.session_state.messages + [
                             {
                                 "role": "user",
