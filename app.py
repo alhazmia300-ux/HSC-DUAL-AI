@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # =========================================
-# UI
+# HEADER
 # =========================================
 
 st.title("🎓 HSC Dual AI Tutor")
@@ -28,7 +28,7 @@ st.write("তোমার HSC পরীক্ষার যেকোনো বি
 st.caption("🚀 Created by ALhaz")
 
 # =========================================
-# LOAD SECRETS
+# LOAD API KEYS
 # =========================================
 
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
@@ -112,7 +112,7 @@ def call_gemini(api_key, text_prompt, image_pil=None):
         if image_pil:
 
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 contents=[
                     text_prompt if text_prompt else "এই ছবিটি ব্যাখ্যা করো",
                     image_pil
@@ -126,15 +126,50 @@ def call_gemini(api_key, text_prompt, image_pil=None):
         else:
 
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 contents=text_prompt if text_prompt else "Hi"
             )
 
         return response.text
 
+    # =========================================
+    # FALLBACK SYSTEM
+    # =========================================
+
     except Exception as e:
 
-        return f"❌ Gemini Error:\n{str(e)}"
+        error_text = str(e)
+
+        # Gemini quota exceeded
+        if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
+
+            try:
+
+                client = Groq(api_key=GROQ_API_KEY)
+
+                completion = client.chat.completions.create(
+
+                    model="llama-3.3-70b-versatile",
+
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": text_prompt if text_prompt else "Hi"
+                        }
+                    ]
+                )
+
+                return (
+                    "⚠️ Gemini quota শেষ হয়েছে।\n\n"
+                    "নিচে Llama3 এর উত্তর দেওয়া হলো:\n\n"
+                    + completion.choices[0].message.content
+                )
+
+            except Exception as groq_error:
+
+                return f"❌ Gemini quota শেষ এবং Groq fallback failed:\n{str(groq_error)}"
+
+        return f"❌ Gemini Error:\n{error_text}"
 
 # =========================================
 # SIDEBAR
@@ -157,7 +192,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # =========================================
-# SHOW OLD MESSAGES
+# SHOW OLD CHATS
 # =========================================
 
 for msg in st.session_state.messages:
@@ -283,7 +318,7 @@ if prompt:
                     )
 
             # =========================================
-            # LLAMA3 / GROQ
+            # LLAMA3
             # =========================================
 
             elif model_choice == "Llama3 (Groq - Text Only)":
@@ -301,9 +336,7 @@ if prompt:
 
                 else:
 
-                    client = Groq(
-                        api_key=GROQ_API_KEY
-                    )
+                    client = Groq(api_key=GROQ_API_KEY)
 
                     completion = client.chat.completions.create(
 
@@ -315,7 +348,6 @@ if prompt:
                                 "content": user_text
                             }
                         ]
-
                     )
 
                     full_response = completion.choices[0].message.content
