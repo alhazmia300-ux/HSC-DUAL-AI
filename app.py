@@ -8,6 +8,7 @@ import time
 import PyPDF2
 import firebase_admin
 import json
+import pyrebase
 
 from firebase_admin import credentials
 from firebase_admin import firestore
@@ -23,17 +24,22 @@ st.set_page_config(
 )
 
 # =========================================
-# CLEAN UI STYLE
+# CLEAN UI
 # =========================================
 
 st.markdown("""
 <style>
 
-/* Chat Message */
+/* Chat messages */
 [data-testid="stChatMessage"] {
     border-radius: 18px;
     padding: 14px;
     margin-bottom: 12px;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    border-right: 1px solid rgba(128,128,128,0.15);
 }
 
 /* Buttons */
@@ -41,14 +47,9 @@ st.markdown("""
     border-radius: 12px;
 }
 
-/* Chat Input */
+/* Chat input */
 .stChatInputContainer {
     border-top: 1px solid rgba(128,128,128,0.2);
-}
-
-/* Sidebar */
-section[data-testid="stSidebar"] {
-    border-right: 1px solid rgba(128,128,128,0.1);
 }
 
 </style>
@@ -62,7 +63,7 @@ st.title("🎓 HSC Dual AI Tutor")
 
 st.subheader("Gemini + Llama3 দিয়ে HSC প্রস্তুতি")
 
-st.write("যেকোনো HSC বিষয়ের প্রশ্ন করো, ছবি বা PDF আপলোড করো।")
+st.write("প্রশ্ন করো, ছবি বা PDF আপলোড করো, MCQ তৈরি করো!")
 
 st.caption("🚀 Created by ALhaz")
 
@@ -79,7 +80,25 @@ TELEGRAM_BOT_TOKEN = st.secrets.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID")
 
 # =========================================
-# FIREBASE INIT
+# FIREBASE WEB CONFIG
+# =========================================
+
+firebase_config = {
+    "apiKey": st.secrets["FIREBASE_API_KEY"],
+    "authDomain": st.secrets["FIREBASE_AUTH_DOMAIN"],
+    "projectId": st.secrets["FIREBASE_PROJECT_ID"],
+    "storageBucket": st.secrets["FIREBASE_STORAGE_BUCKET"],
+    "messagingSenderId": st.secrets["FIREBASE_MESSAGING_SENDER_ID"],
+    "appId": st.secrets["FIREBASE_APP_ID"],
+    "databaseURL": ""
+}
+
+firebase = pyrebase.initialize_app(firebase_config)
+
+auth = firebase.auth()
+
+# =========================================
+# FIREBASE ADMIN INIT
 # =========================================
 
 if not firebase_admin._apps:
@@ -95,6 +114,71 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 # =========================================
+# LOGIN SYSTEM
+# =========================================
+
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+if st.session_state.user is None:
+
+    st.title("🔐 Login Required")
+
+    auth_mode = st.selectbox(
+        "Choose Option",
+        ["Login", "Sign Up"]
+    )
+
+    email = st.text_input("📧 Email")
+
+    password = st.text_input(
+        "🔑 Password",
+        type="password"
+    )
+
+    # SIGNUP
+    if auth_mode == "Sign Up":
+
+        if st.button("Create Account"):
+
+            try:
+
+                auth.create_user_with_email_and_password(
+                    email,
+                    password
+                )
+
+                st.success("✅ Account created successfully")
+
+            except Exception as e:
+
+                st.error(f"❌ {e}")
+
+    # LOGIN
+    else:
+
+        if st.button("Login"):
+
+            try:
+
+                user = auth.sign_in_with_email_and_password(
+                    email,
+                    password
+                )
+
+                st.session_state.user = user
+
+                st.success("✅ Login successful")
+
+                st.rerun()
+
+            except:
+
+                st.error("❌ Invalid email or password")
+
+    st.stop()
+
+# =========================================
 # USER ID
 # =========================================
 
@@ -102,17 +186,15 @@ def get_unique_user_id():
 
     try:
 
-        raw_data = str(st.context.headers)
+        email = st.session_state.user["email"]
 
-        user_hash = hashlib.md5(
-            raw_data.encode()
-        ).hexdigest()[:10]
+        safe_email = email.replace("@", "_").replace(".", "_")
 
-        return f"user_{user_hash}"
+        return safe_email
 
     except:
 
-        return "user_unknown"
+        return "unknown_user"
 
 USER_ID = get_unique_user_id()
 
@@ -130,13 +212,14 @@ def save_message(role, content):
     })
 
 # =========================================
-# FIREBASE LOAD CHAT
+# LOAD CHAT HISTORY
 # =========================================
 
 def load_chat_history():
 
     chats = db.collection("chat_history") \
         .where("user_id", "==", USER_ID) \
+        .order_by("timestamp") \
         .stream()
 
     messages = []
@@ -153,7 +236,7 @@ def load_chat_history():
     return messages
 
 # =========================================
-# FIREBASE CLEAR CHAT
+# CLEAR CHAT
 # =========================================
 
 def clear_chat_history():
@@ -172,8 +255,26 @@ def clear_chat_history():
 
 st.sidebar.title("⚙️ Settings")
 
+st.sidebar.success(
+    f"👤 {st.session_state.user['email']}"
+)
+
+if st.sidebar.button("🚪 Logout"):
+
+    st.session_state.user = None
+
+    st.rerun()
+
+if st.sidebar.button("🗑️ Clear Chat"):
+
+    clear_chat_history()
+
+    st.session_state.messages = []
+
+    st.rerun()
+
 model_choice = st.sidebar.radio(
-    "🤖 AI Model নির্বাচন করো",
+    "🤖 AI Model",
     [
         "Gemini (Multimodal)",
         "Llama3 (Groq - Text Only)"
@@ -232,18 +333,6 @@ subject = st.sidebar.selectbox(
 )
 
 # =========================================
-# CLEAR CHAT BUTTON
-# =========================================
-
-if st.sidebar.button("🗑️ Clear Chat"):
-
-    clear_chat_history()
-
-    st.session_state.messages = []
-
-    st.rerun()
-
-# =========================================
 # TELEGRAM NOTIFICATION
 # =========================================
 
@@ -291,6 +380,7 @@ def call_gemini(api_key, text_prompt, image_pil=None):
 
         client = genai.Client(api_key=api_key)
 
+        # IMAGE + TEXT
         if image_pil:
 
             response = client.models.generate_content(
@@ -301,6 +391,7 @@ def call_gemini(api_key, text_prompt, image_pil=None):
                 ]
             )
 
+        # TEXT ONLY
         else:
 
             response = client.models.generate_content(
@@ -314,6 +405,7 @@ def call_gemini(api_key, text_prompt, image_pil=None):
 
         error_text = str(e)
 
+        # GROQ FALLBACK
         if "429" in error_text:
 
             try:
@@ -366,7 +458,7 @@ if st.sidebar.button("📝 Generate MCQ"):
     st.write(mcq_response)
 
 # =========================================
-# LOAD CHAT HISTORY
+# LOAD HISTORY
 # =========================================
 
 if "messages" not in st.session_state:
@@ -374,7 +466,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = load_chat_history()
 
 # =========================================
-# SHOW CHAT HISTORY
+# SHOW HISTORY
 # =========================================
 
 for msg in st.session_state.messages:
@@ -396,7 +488,7 @@ prompt = st.chat_input(
 )
 
 # =========================================
-# MAIN CHAT SYSTEM
+# MAIN CHAT
 # =========================================
 
 if prompt:
@@ -407,13 +499,11 @@ if prompt:
 
     image_to_send = None
 
-    has_file_flag = False
-
     pdf_text = ""
 
-    # =========================================
-    # SUBJECT TUTOR MODE
-    # =========================================
+    has_file_flag = False
+
+    # SUBJECT MODE
 
     user_text = f"""
 তুমি একজন {subject} বিষয়ের HSC শিক্ষক।
@@ -424,9 +514,7 @@ if prompt:
 {user_text}
 """
 
-    # =========================================
     # FILE HANDLE
-    # =========================================
 
     if uploaded_files and len(uploaded_files) > 0:
 
@@ -437,11 +525,13 @@ if prompt:
         has_file_flag = True
 
         # IMAGE
+
         if file_name.endswith((".jpg", ".jpeg", ".png")):
 
             image_to_send = Image.open(uploaded_file)
 
         # PDF
+
         elif file_name.endswith(".pdf"):
 
             reader = PyPDF2.PdfReader(uploaded_file)
@@ -453,19 +543,15 @@ if prompt:
                 if extracted:
                     pdf_text += extracted
 
-            st.success("✅ PDF সফলভাবে আপলোড হয়েছে")
+            st.success("✅ PDF Uploaded")
 
-    # =========================================
-    # ADD PDF CONTENT
-    # =========================================
+    # ADD PDF TEXT
 
     if pdf_text:
 
         user_text += f"\n\nPDF Content:\n{pdf_text[:4000]}"
 
-    # =========================================
     # SHOW USER MESSAGE
-    # =========================================
 
     with st.chat_message("user"):
 
@@ -473,22 +559,20 @@ if prompt:
 
             st.image(
                 image_to_send,
-                caption="আপলোড করা ছবি",
+                caption="Uploaded Image",
                 width=250
             )
 
         if pdf_text:
 
-            st.info("📄 PDF আপলোড করা হয়েছে")
+            st.info("📄 PDF Uploaded")
 
         st.markdown(
             prompt.text if prompt.text
-            else "[ফাইল পাঠানো হয়েছে]"
+            else "[File Uploaded]"
         )
 
-    # =========================================
     # SAVE USER MESSAGE
-    # =========================================
 
     st.session_state.messages.append({
         "role": "user",
@@ -497,9 +581,7 @@ if prompt:
 
     save_message("user", user_text)
 
-    # =========================================
     # SEND TELEGRAM
-    # =========================================
 
     send_telegram(
         USER_ID,
@@ -508,9 +590,7 @@ if prompt:
         has_file=has_file_flag
     )
 
-    # =========================================
-    # ASSISTANT RESPONSE
-    # =========================================
+    # ASSISTANT MESSAGE
 
     with st.chat_message("assistant"):
 
@@ -521,6 +601,7 @@ if prompt:
         try:
 
             # GEMINI
+
             if model_choice == "Gemini (Multimodal)":
 
                 if not GEMINI_API_KEY:
@@ -536,6 +617,7 @@ if prompt:
                     )
 
             # LLAMA3
+
             elif model_choice == "Llama3 (Groq - Text Only)":
 
                 if image_to_send:
@@ -571,9 +653,7 @@ if prompt:
 
             full_response = f"❌ Internal Error:\n{str(e)}"
 
-        # =========================================
-        # STREAMING EFFECT
-        # =========================================
+        # STREAM EFFECT
 
         typed_text = ""
 
@@ -585,9 +665,7 @@ if prompt:
 
             time.sleep(0.01)
 
-        # =========================================
         # SAVE RESPONSE
-        # =========================================
 
         st.session_state.messages.append({
             "role": "assistant",
