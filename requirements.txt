@@ -4,3 +4,4 @@ Pillow
 requests
 google-genai
 PyPDF2
+firebase-admin
