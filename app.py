@@ -1,20 +1,20 @@
 import streamlit as st
 from groq import Groq
-from PIL import Image
 from google import genai
+from PIL import Image
 import requests
 import time
 import PyPDF2
 import firebase_admin
 import json
-import pyrebase
+import hashlib
 
 from firebase_admin import credentials
 from firebase_admin import firestore
 
-# =========================================================
+# ======================================================
 # PAGE CONFIG
-# =========================================================
+# ======================================================
 
 st.set_page_config(
     page_title="🎓 HSC Dual AI Tutor",
@@ -22,28 +22,23 @@ st.set_page_config(
     layout="centered"
 )
 
-# =========================================================
+# ======================================================
 # CUSTOM CSS
-# =========================================================
+# ======================================================
 
 st.markdown("""
 <style>
 
-/* Main App */
+/* Main */
 .stApp {
     background-color: var(--background-color);
 }
 
-/* Chat */
+/* Chat Box */
 [data-testid="stChatMessage"] {
     border-radius: 16px;
     padding: 14px;
     margin-bottom: 12px;
-}
-
-/* Sidebar */
-section[data-testid="stSidebar"] {
-    border-right: 1px solid rgba(128,128,128,0.15);
 }
 
 /* Buttons */
@@ -52,7 +47,12 @@ section[data-testid="stSidebar"] {
     border-radius: 12px;
 }
 
-/* Inputs */
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    border-right: 1px solid rgba(128,128,128,0.15);
+}
+
+/* Input */
 .stTextInput input {
     border-radius: 12px;
 }
@@ -65,9 +65,9 @@ section[data-testid="stSidebar"] {
 </style>
 """, unsafe_allow_html=True)
 
-# =========================================================
+# ======================================================
 # HEADER
-# =========================================================
+# ======================================================
 
 st.title("🎓 HSC Dual AI Tutor")
 
@@ -77,39 +77,23 @@ st.write("প্রশ্ন করো, ছবি/PDF আপলোড করো,
 
 st.caption("🚀 Created by ALhaz")
 
-# =========================================================
+# ======================================================
 # SECRETS
-# =========================================================
+# ======================================================
 
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
-GROQ_API_KEY = st.secrets.get("GROQ_API_KEY")
+GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+
+FIREBASE_API_KEY = st.secrets["FIREBASE_API_KEY"]
 
 TELEGRAM_BOT_TOKEN = st.secrets.get("TELEGRAM_BOT_TOKEN")
 
 TELEGRAM_CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID")
 
-# =========================================================
-# FIREBASE CONFIG
-# =========================================================
-
-firebase_config = {
-    "apiKey": st.secrets["FIREBASE_API_KEY"],
-    "authDomain": st.secrets["FIREBASE_AUTH_DOMAIN"],
-    "projectId": st.secrets["FIREBASE_PROJECT_ID"],
-    "storageBucket": st.secrets["FIREBASE_STORAGE_BUCKET"],
-    "messagingSenderId": st.secrets["FIREBASE_MESSAGING_SENDER_ID"],
-    "appId": st.secrets["FIREBASE_APP_ID"],
-    "databaseURL": ""
-}
-
-firebase = pyrebase.initialize_app(firebase_config)
-
-auth = firebase.auth()
-
-# =========================================================
+# ======================================================
 # FIREBASE ADMIN
-# =========================================================
+# ======================================================
 
 if not firebase_admin._apps:
 
@@ -123,25 +107,124 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-# =========================================================
-# SESSION FIX
-# =========================================================
+# ======================================================
+# SESSION
+# ======================================================
 
-if "user" not in st.session_state:
-    st.session_state.user = None
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 
-if "user_info" not in st.session_state:
-    st.session_state.user_info = None
+if "user_email" not in st.session_state:
+    st.session_state.user_email = ""
 
-# =========================================================
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# ======================================================
+# FIREBASE AUTH FUNCTIONS
+# ======================================================
+
+def signup(email, password):
+
+    url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_API_KEY}"
+
+    payload = {
+        "email": email,
+        "password": password,
+        "returnSecureToken": True
+    }
+
+    r = requests.post(url, json=payload)
+
+    return r.json()
+
+def login(email, password):
+
+    url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_API_KEY}"
+
+    payload = {
+        "email": email,
+        "password": password,
+        "returnSecureToken": True
+    }
+
+    r = requests.post(url, json=payload)
+
+    return r.json()
+
+def logout():
+
+    st.session_state.logged_in = False
+    st.session_state.user_email = ""
+    st.session_state.messages = []
+
+# ======================================================
+# USER ID
+# ======================================================
+
+def get_user_id():
+
+    email = st.session_state.user_email
+
+    return hashlib.md5(email.encode()).hexdigest()
+
+# ======================================================
+# SAVE CHAT
+# ======================================================
+
+def save_message(role, content):
+
+    try:
+
+        db.collection("chat_history").add({
+            "user_id": get_user_id(),
+            "role": role,
+            "content": content,
+            "timestamp": firestore.SERVER_TIMESTAMP
+        })
+
+    except Exception as e:
+
+        st.error(f"❌ Save Error: {str(e)}")
+
+# ======================================================
+# LOAD CHAT
+# ======================================================
+
+def load_chat_history():
+
+    try:
+
+        chats = db.collection("chat_history") \
+            .where("user_id", "==", get_user_id()) \
+            .stream()
+
+        messages = []
+
+        for chat in chats:
+
+            data = chat.to_dict()
+
+            messages.append({
+                "role": data["role"],
+                "content": data["content"]
+            })
+
+        return messages
+
+    except:
+
+        return []
+
+# ======================================================
 # LOGIN PAGE
-# =========================================================
+# ======================================================
 
-if st.session_state.user is None:
+if not st.session_state.logged_in:
 
-    st.title("🔐 Login Required")
+    st.subheader("🔐 Login Required")
 
-    auth_mode = st.selectbox(
+    option = st.selectbox(
         "Choose Option",
         ["Login", "Sign Up"]
     )
@@ -153,50 +236,43 @@ if st.session_state.user is None:
         type="password"
     )
 
-    # =====================================================
-    # SIGN UP
-    # =====================================================
+    # ==================================================
+    # SIGNUP
+    # ==================================================
 
-    if auth_mode == "Sign Up":
+    if option == "Sign Up":
 
         if st.button("Create Account"):
 
-            try:
+            result = signup(email, password)
 
-                user = auth.create_user_with_email_and_password(
-                    email,
-                    password
-                )
+            if "email" in result:
 
-                st.success("✅ Account Created Successfully")
+                st.success("✅ Account Created Successfully!")
 
-                st.info("👉 এখন Login অপশন থেকে Login করো")
+                st.info("👉 এখন Login করো")
 
-            except Exception as e:
+            else:
 
-                st.error(f"❌ {str(e)}")
+                st.error(result)
 
-    # =====================================================
+    # ==================================================
     # LOGIN
-    # =====================================================
+    # ==================================================
 
     else:
 
         if st.button("Login"):
 
-            try:
+            result = login(email, password)
 
-                user = auth.sign_in_with_email_and_password(
-                    email,
-                    password
-                )
+            if "email" in result:
 
-                st.session_state.user = user["idToken"]
+                st.session_state.logged_in = True
 
-                st.session_state.user_info = {
-                    "email": email,
-                    "refreshToken": user["refreshToken"]
-                }
+                st.session_state.user_email = result["email"]
+
+                st.session_state.messages = load_chat_history()
 
                 st.success("✅ Login Successful")
 
@@ -204,159 +280,33 @@ if st.session_state.user is None:
 
                 st.rerun()
 
-            except Exception as e:
+            else:
 
                 st.error("❌ Invalid email or password")
 
     st.stop()
 
-# =========================================================
-# AUTO LOGIN AFTER REFRESH
-# =========================================================
-
-try:
-
-    refreshed_user = auth.refresh(
-        st.session_state.user_info["refreshToken"]
-    )
-
-    st.session_state.user = refreshed_user["idToken"]
-
-except:
-
-    st.session_state.user = None
-
-    st.session_state.user_info = None
-
-    st.rerun()
-
-# =========================================================
-# USER ID
-# =========================================================
-
-def get_unique_user_id():
-
-    try:
-
-        email = st.session_state.user_info["email"]
-
-        safe_email = email.replace("@", "_").replace(".", "_")
-
-        return safe_email
-
-    except:
-
-        return "unknown_user"
-
-USER_ID = get_unique_user_id()
-
-# =========================================================
-# SAVE CHAT
-# =========================================================
-
-def save_message(role, content):
-
-    try:
-
-        db.collection("chat_history").add({
-            "user_id": USER_ID,
-            "role": role,
-            "content": content,
-            "timestamp": firestore.SERVER_TIMESTAMP
-        })
-
-    except Exception as e:
-
-        st.error(f"❌ Save Error: {str(e)}")
-
-# =========================================================
-# LOAD CHAT HISTORY
-# =========================================================
-
-def load_chat_history():
-
-    try:
-
-        chats = db.collection("chat_history") \
-            .where("user_id", "==", USER_ID) \
-            .stream()
-
-        messages = []
-
-        chat_list = []
-
-        for chat in chats:
-
-            data = chat.to_dict()
-
-            chat_list.append(data)
-
-        # manual sort
-        chat_list = sorted(
-            chat_list,
-            key=lambda x: str(x.get("timestamp", ""))
-        )
-
-        for data in chat_list:
-
-            messages.append({
-                "role": data["role"],
-                "content": data["content"]
-            })
-
-        return messages
-
-    except Exception as e:
-
-        st.error(f"❌ Chat Load Error: {str(e)}")
-
-        return []
-
-# =========================================================
-# CLEAR CHAT
-# =========================================================
-
-def clear_chat_history():
-
-    try:
-
-        chats = db.collection("chat_history") \
-            .where("user_id", "==", USER_ID) \
-            .stream()
-
-        for chat in chats:
-
-            chat.reference.delete()
-
-    except Exception as e:
-
-        st.error(f"❌ Clear Error: {str(e)}")
-
-# =========================================================
+# ======================================================
 # SIDEBAR
-# =========================================================
-
-st.sidebar.title("⚙️ Settings")
+# ======================================================
 
 st.sidebar.success(
-    f"👤 {st.session_state.user_info['email']}"
+    f"👤 {st.session_state.user_email}"
 )
 
 if st.sidebar.button("🚪 Logout"):
 
-    st.session_state.user = None
-
-    st.session_state.user_info = None
+    logout()
 
     st.rerun()
 
 if st.sidebar.button("🗑️ Clear Chat"):
 
-    clear_chat_history()
-
     st.session_state.messages = []
 
-    st.rerun()
+# ======================================================
+# MODEL
+# ======================================================
 
 model_choice = st.sidebar.radio(
     "🤖 AI Model",
@@ -365,6 +315,10 @@ model_choice = st.sidebar.radio(
         "Llama3 (Text Only)"
     ]
 )
+
+# ======================================================
+# SUBJECTS
+# ======================================================
 
 subject = st.sidebar.selectbox(
     "📚 বিষয় নির্বাচন করো",
@@ -381,7 +335,6 @@ subject = st.sidebar.selectbox(
         "Economics",
         "Sociology",
         "Geography",
-        "Civics",
 
         # Commerce
         "Accounting",
@@ -401,28 +354,34 @@ subject = st.sidebar.selectbox(
     ]
 )
 
-# =========================================================
-# TELEGRAM
-# =========================================================
+# ======================================================
+# MCQ GENERATOR
+# ======================================================
 
-def send_telegram(user_id, q_text, model_name):
+if st.sidebar.button("📝 Generate MCQ"):
+
+    mcq_prompt = f"""
+    {subject} বিষয়ের HSC level এর
+    10টি MCQ তৈরি করো।
+    প্রতিটির সঠিক উত্তর দাও।
+    """
+
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": mcq_prompt
+    })
+
+# ======================================================
+# TELEGRAM
+# ======================================================
+
+def send_telegram(message):
 
     if not TELEGRAM_BOT_TOKEN:
         return
 
     if not TELEGRAM_CHAT_ID:
         return
-
-    msg = f"""
-🔔 নতুন প্রশ্ন
-
-👤 User: {user_id}
-
-🤖 Model: {model_name}
-
-❓ Question:
-{q_text}
-"""
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
 
@@ -432,112 +391,48 @@ def send_telegram(user_id, q_text, model_name):
             url,
             json={
                 "chat_id": TELEGRAM_CHAT_ID,
-                "text": msg
-            },
-            timeout=10
+                "text": message
+            }
         )
 
     except:
         pass
 
-# =========================================================
+# ======================================================
 # GEMINI
-# =========================================================
+# ======================================================
 
-def call_gemini(api_key, text_prompt, image_pil=None):
+def call_gemini(prompt, image=None):
 
     try:
 
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(
+            api_key=GEMINI_API_KEY
+        )
 
-        # IMAGE MODE
-        if image_pil:
+        if image:
 
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
-                contents=[
-                    text_prompt,
-                    image_pil
-                ]
+                contents=[prompt, image]
             )
 
-        # TEXT MODE
         else:
 
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
-                contents=text_prompt
+                contents=prompt
             )
 
         return response.text
 
     except Exception as e:
 
-        error_text = str(e)
+        return f"❌ Gemini Error:\n{str(e)}"
 
-        # Fallback to Groq
-        if "429" in error_text:
-
-            try:
-
-                client = Groq(api_key=GROQ_API_KEY)
-
-                completion = client.chat.completions.create(
-
-                    model="llama-3.3-70b-versatile",
-
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": text_prompt
-                        }
-                    ]
-                )
-
-                return (
-                    "⚠️ Gemini quota শেষ হয়েছে।\n\n"
-                    + completion.choices[0].message.content
-                )
-
-            except Exception as groq_error:
-
-                return f"❌ Fallback Error:\n{str(groq_error)}"
-
-        return f"❌ Gemini Error:\n{error_text}"
-
-# =========================================================
-# MCQ GENERATOR
-# =========================================================
-
-if st.sidebar.button("📝 Generate MCQ"):
-
-    mcq_prompt = f"""
-    {subject} বিষয়ের HSC level এর
-    10টি MCQ তৈরি করো।
-
-    প্রতিটির সঠিক উত্তর দাও।
-    """
-
-    with st.spinner("MCQ তৈরি হচ্ছে..."):
-
-        mcq_response = call_gemini(
-            GEMINI_API_KEY,
-            mcq_prompt
-        )
-
-    st.write(mcq_response)
-
-# =========================================================
-# LOAD HISTORY
-# =========================================================
-
-if "messages" not in st.session_state:
-
-    st.session_state.messages = load_chat_history()
-
-# =========================================================
-# SHOW HISTORY
-# =========================================================
+# ======================================================
+# SHOW CHAT
+# ======================================================
 
 for msg in st.session_state.messages:
 
@@ -545,11 +440,9 @@ for msg in st.session_state.messages:
 
         st.markdown(msg["content"])
 
-st.markdown("---")
-
-# =========================================================
+# ======================================================
 # CHAT INPUT
-# =========================================================
+# ======================================================
 
 prompt = st.chat_input(
     "প্রশ্ন লেখো অথবা ছবি/PDF আপলোড করো...",
@@ -557,9 +450,9 @@ prompt = st.chat_input(
     file_type=["jpg", "jpeg", "png", "pdf"]
 )
 
-# =========================================================
+# ======================================================
 # MAIN CHAT
-# =========================================================
+# ======================================================
 
 if prompt:
 
@@ -571,8 +464,7 @@ if prompt:
 
     pdf_text = ""
 
-    # SUBJECT MODE
-    user_text = f"""
+    user_prompt = f"""
 তুমি একজন {subject} বিষয়ের HSC শিক্ষক।
 
 সহজ ভাষায় উত্তর দাও।
@@ -581,7 +473,10 @@ if prompt:
 {user_text}
 """
 
+    # ==================================================
     # FILES
+    # ==================================================
+
     if uploaded_files and len(uploaded_files) > 0:
 
         uploaded_file = uploaded_files[0]
@@ -607,32 +502,28 @@ if prompt:
 
             st.success("✅ PDF Uploaded")
 
-    # Add PDF text
     if pdf_text:
 
-        user_text += f"\n\nPDF Content:\n{pdf_text[:4000]}"
+        user_prompt += f"\n\nPDF:\n{pdf_text[:4000]}"
 
-    # USER MESSAGE
+    # ==================================================
+    # SHOW USER
+    # ==================================================
+
     with st.chat_message("user"):
 
         if image_to_send:
 
             st.image(
                 image_to_send,
-                caption="Uploaded Image",
                 width=250
             )
 
-        if pdf_text:
-
-            st.info("📄 PDF Uploaded")
-
         st.markdown(
-            prompt.text if prompt.text
+            user_text if user_text
             else "[File Uploaded]"
         )
 
-    # SAVE USER
     st.session_state.messages.append({
         "role": "user",
         "content": user_text
@@ -640,16 +531,11 @@ if prompt:
 
     save_message("user", user_text)
 
-    # TELEGRAM
-    send_telegram(
-        USER_ID,
-        user_text,
-        model_choice
-    )
+    send_telegram(user_text)
 
-    # =====================================================
+    # ==================================================
     # ASSISTANT
-    # =====================================================
+    # ==================================================
 
     with st.chat_message("assistant"):
 
@@ -663,8 +549,7 @@ if prompt:
             if model_choice == "Gemini (Multimodal)":
 
                 full_response = call_gemini(
-                    GEMINI_API_KEY,
-                    user_text,
+                    user_prompt,
                     image_to_send
                 )
 
@@ -680,16 +565,18 @@ if prompt:
 
                 else:
 
-                    client = Groq(api_key=GROQ_API_KEY)
+                    client = Groq(
+                        api_key=GROQ_API_KEY
+                    )
 
                     completion = client.chat.completions.create(
 
                         model="llama-3.3-70b-versatile",
 
-                        messages=st.session_state.messages + [
+                        messages=[
                             {
                                 "role": "user",
-                                "content": user_text
+                                "content": user_prompt
                             }
                         ]
                     )
@@ -700,18 +587,17 @@ if prompt:
 
             full_response = f"❌ Error:\n{str(e)}"
 
-        # Typing effect
-        typed_text = ""
+        # Typing Effect
+        typed = ""
 
         for char in full_response:
 
-            typed_text += char
+            typed += char
 
-            response_placeholder.markdown(typed_text)
+            response_placeholder.markdown(typed)
 
             time.sleep(0.01)
 
-        # SAVE RESPONSE
         st.session_state.messages.append({
             "role": "assistant",
             "content": full_response
