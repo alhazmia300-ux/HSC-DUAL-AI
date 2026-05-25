@@ -2,4 +2,4 @@ streamlit
 groq
 Pillow
 requests
-google-genai
+google-genai 
