@@ -12,66 +12,38 @@ import PyPDF2
 # =========================================
 
 st.set_page_config(
-    page_title="HSC Dual AI Tutor",
+    page_title="🎓 HSC Dual AI Tutor",
     page_icon="🎓",
     layout="centered"
 )
 
 # =========================================
-# MODERN DARK UI
+# CLEAN UI STYLE
 # =========================================
 
 st.markdown("""
 <style>
 
-/* Main App */
-.stApp {
-    background: #0f172a;
-    color: white;
-}
-
 /* Chat Message */
 [data-testid="stChatMessage"] {
-    background: #111827;
-    border: 1px solid #1f2937;
     border-radius: 18px;
     padding: 14px;
     margin-bottom: 12px;
 }
 
-/* Sidebar */
-section[data-testid="stSidebar"] {
-    background: #111827;
+/* Buttons */
+.stButton > button {
+    border-radius: 12px;
 }
 
 /* Chat Input */
 .stChatInputContainer {
-    background: #111827;
-    border-top: 1px solid #1f2937;
+    border-top: 1px solid rgba(128,128,128,0.2);
 }
 
-/* Buttons */
-.stButton>button {
-    border-radius: 12px;
-    background: #2563eb;
-    color: white;
-    border: none;
-}
-
-/* Selectbox */
-.stSelectbox div[data-baseweb="select"] {
-    background-color: #1f2937;
-    border-radius: 10px;
-}
-
-/* Radio */
-.stRadio label {
-    color: white !important;
-}
-
-/* Text */
-h1, h2, h3, h4, h5, h6, p, span, label {
-    color: white !important;
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    border-right: 1px solid rgba(128,128,128,0.1);
 }
 
 </style>
@@ -83,14 +55,14 @@ h1, h2, h3, h4, h5, h6, p, span, label {
 
 st.title("🎓 HSC Dual AI Tutor")
 
-st.subheader("Llama3 এবং Gemini-র সমন্বয়ে HSC প্রস্তুতি")
+st.subheader("Gemini + Llama3 দিয়ে HSC প্রস্তুতি")
 
-st.write("তোমার HSC পরীক্ষার যেকোনো বিষয়ের প্রশ্ন এখানে জিজ্ঞেস করো!")
+st.write("যেকোনো HSC বিষয়ের প্রশ্ন করো, ছবি বা PDF আপলোড করো।")
 
 st.caption("🚀 Created by ALhaz")
 
 # =========================================
-# LOAD SECRETS
+# LOAD API KEYS
 # =========================================
 
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
@@ -118,17 +90,56 @@ model_choice = st.sidebar.radio(
 subject = st.sidebar.selectbox(
     "📚 বিষয় নির্বাচন করো",
     [
-        "Physics",
-        "Chemistry",
-        "Biology",
-        "Higher Math",
+
+        # SCIENCE
+        "Physics 1st Paper",
+        "Physics 2nd Paper",
+        "Chemistry 1st Paper",
+        "Chemistry 2nd Paper",
+        "Biology 1st Paper",
+        "Biology 2nd Paper",
+        "Higher Math 1st Paper",
+        "Higher Math 2nd Paper",
+
+        # BUSINESS STUDIES
+        "Accounting 1st Paper",
+        "Accounting 2nd Paper",
+        "Finance & Banking 1st Paper",
+        "Finance & Banking 2nd Paper",
+        "Business Organization & Management 1st Paper",
+        "Business Organization & Management 2nd Paper",
+
+        # HUMANITIES
+        "History 1st Paper",
+        "History 2nd Paper",
+        "Civics",
+        "Economics 1st Paper",
+        "Economics 2nd Paper",
+        "Sociology 1st Paper",
+        "Sociology 2nd Paper",
+        "Islamic History & Culture",
+        "Logic",
+        "Social Work",
+        "Geography",
+
+        # COMPULSORY
+        "Bangla 1st Paper",
+        "Bangla 2nd Paper",
+        "English 1st Paper",
+        "English 2nd Paper",
         "ICT",
-        "English"
+
+        # OPTIONAL
+        "Agriculture",
+        "Statistics",
+        "Psychology",
+        "Home Science",
+        "Islamic Studies"
     ]
 )
 
 # =========================================
-# UNIQUE USER ID
+# USER ID
 # =========================================
 
 def get_unique_user_id():
@@ -146,22 +157,22 @@ def get_unique_user_id():
         return "User_Unknown"
 
 # =========================================
-# TELEGRAM FUNCTION
+# TELEGRAM NOTIFICATION
 # =========================================
 
-def send_telegram(user_id, q_text, model_name, has_img=False):
+def send_telegram(user_id, q_text, model_name, has_file=False):
 
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
 
-    img_status = "📸 File" if has_img else "📝 Text"
+    file_status = "📎 File" if has_file else "📝 Text"
 
     msg = f"""
 🔔 নতুন প্রশ্ন!
 
 👤 User: {user_id}
 🤖 Model: {model_name}
-🖼️ Type: {img_status}
+📂 Type: {file_status}
 
 ❓ Question:
 {q_text}
@@ -280,7 +291,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # =========================================
-# SHOW OLD CHATS
+# SHOW CHAT HISTORY
 # =========================================
 
 for msg in st.session_state.messages:
@@ -315,7 +326,7 @@ if prompt:
 
     image_to_send = None
 
-    has_image_flag = False
+    has_file_flag = False
 
     pdf_text = ""
 
@@ -342,12 +353,12 @@ if prompt:
 
         file_name = uploaded_file.name.lower()
 
+        has_file_flag = True
+
         # IMAGE
         if file_name.endswith((".jpg", ".jpeg", ".png")):
 
             image_to_send = Image.open(uploaded_file)
-
-            has_image_flag = True
 
         # PDF
         elif file_name.endswith(".pdf"):
@@ -364,7 +375,7 @@ if prompt:
             st.success("✅ PDF সফলভাবে আপলোড হয়েছে")
 
     # =========================================
-    # ADD PDF CONTENT
+    # PDF CONTENT ADD
     # =========================================
 
     if pdf_text:
@@ -377,7 +388,7 @@ if prompt:
 
     with st.chat_message("user"):
 
-        if has_image_flag:
+        if image_to_send:
 
             st.image(
                 image_to_send,
@@ -389,7 +400,10 @@ if prompt:
 
             st.info("📄 PDF আপলোড করা হয়েছে")
 
-        st.markdown(prompt.text if prompt.text else "[ফাইল পাঠানো হয়েছে]")
+        st.markdown(
+            prompt.text if prompt.text
+            else "[ফাইল পাঠানো হয়েছে]"
+        )
 
     # =========================================
     # SAVE USER MESSAGE
@@ -401,14 +415,14 @@ if prompt:
     })
 
     # =========================================
-    # TELEGRAM SEND
+    # SEND TELEGRAM
     # =========================================
 
     send_telegram(
         current_user_id,
         user_text,
         model_choice,
-        has_img=has_image_flag
+        has_file=has_file_flag
     )
 
     # =========================================
@@ -441,7 +455,7 @@ if prompt:
             # LLAMA3
             elif model_choice == "Llama3 (Groq - Text Only)":
 
-                if has_image_flag:
+                if image_to_send:
 
                     full_response = (
                         "⚠️ Llama3 ছবি বুঝতে পারে না। "
