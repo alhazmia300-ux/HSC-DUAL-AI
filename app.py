@@ -29,30 +29,30 @@ st.set_page_config(
 st.markdown("""
 <style>
 
-/* Main app */
+/* Main App */
 .stApp {
     background-color: var(--background-color);
 }
 
-/* Chat box */
+/* Chat */
 [data-testid="stChatMessage"] {
     border-radius: 16px;
-    padding: 12px;
+    padding: 14px;
     margin-bottom: 12px;
 }
 
 /* Sidebar */
 section[data-testid="stSidebar"] {
-    border-right: 1px solid rgba(128,128,128,0.2);
+    border-right: 1px solid rgba(128,128,128,0.15);
 }
 
 /* Buttons */
 .stButton > button {
-    border-radius: 12px;
     width: 100%;
+    border-radius: 12px;
 }
 
-/* Input */
+/* Inputs */
 .stTextInput input {
     border-radius: 12px;
 }
@@ -124,14 +124,17 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 # =========================================================
-# AUTH SESSION
+# SESSION FIX
 # =========================================================
 
 if "user" not in st.session_state:
     st.session_state.user = None
 
+if "user_info" not in st.session_state:
+    st.session_state.user_info = None
+
 # =========================================================
-# LOGIN SYSTEM
+# LOGIN PAGE
 # =========================================================
 
 if st.session_state.user is None:
@@ -150,27 +153,33 @@ if st.session_state.user is None:
         type="password"
     )
 
+    # =====================================================
     # SIGN UP
+    # =====================================================
+
     if auth_mode == "Sign Up":
 
         if st.button("Create Account"):
 
             try:
 
-                auth.create_user_with_email_and_password(
+                user = auth.create_user_with_email_and_password(
                     email,
                     password
                 )
 
-                st.success("✅ Account created successfully")
+                st.success("✅ Account Created Successfully")
 
-                st.info("👉 এখন Login অপশন থেকে login করো")
+                st.info("👉 এখন Login অপশন থেকে Login করো")
 
             except Exception as e:
 
                 st.error(f"❌ {str(e)}")
 
+    # =====================================================
     # LOGIN
+    # =====================================================
+
     else:
 
         if st.button("Login"):
@@ -182,11 +191,16 @@ if st.session_state.user is None:
                     password
                 )
 
-                user["email"] = email
+                st.session_state.user = user["idToken"]
 
-                st.session_state.user = user
+                st.session_state.user_info = {
+                    "email": email,
+                    "refreshToken": user["refreshToken"]
+                }
 
-                st.success("✅ Login successful")
+                st.success("✅ Login Successful")
+
+                time.sleep(1)
 
                 st.rerun()
 
@@ -197,6 +211,26 @@ if st.session_state.user is None:
     st.stop()
 
 # =========================================================
+# AUTO LOGIN AFTER REFRESH
+# =========================================================
+
+try:
+
+    refreshed_user = auth.refresh(
+        st.session_state.user_info["refreshToken"]
+    )
+
+    st.session_state.user = refreshed_user["idToken"]
+
+except:
+
+    st.session_state.user = None
+
+    st.session_state.user_info = None
+
+    st.rerun()
+
+# =========================================================
 # USER ID
 # =========================================================
 
@@ -204,7 +238,7 @@ def get_unique_user_id():
 
     try:
 
-        email = st.session_state.user["email"]
+        email = st.session_state.user_info["email"]
 
         safe_email = email.replace("@", "_").replace(".", "_")
 
@@ -257,7 +291,7 @@ def load_chat_history():
 
             chat_list.append(data)
 
-        # Sort manually
+        # manual sort
         chat_list = sorted(
             chat_list,
             key=lambda x: str(x.get("timestamp", ""))
@@ -305,12 +339,14 @@ def clear_chat_history():
 st.sidebar.title("⚙️ Settings")
 
 st.sidebar.success(
-    f"👤 {st.session_state.user['email']}"
+    f"👤 {st.session_state.user_info['email']}"
 )
 
 if st.sidebar.button("🚪 Logout"):
 
     st.session_state.user = None
+
+    st.session_state.user_info = None
 
     st.rerun()
 
@@ -439,7 +475,7 @@ def call_gemini(api_key, text_prompt, image_pil=None):
 
         error_text = str(e)
 
-        # FALLBACK TO GROQ
+        # Fallback to Groq
         if "429" in error_text:
 
             try:
@@ -535,7 +571,7 @@ if prompt:
 
     pdf_text = ""
 
-    # SUBJECT PROMPT
+    # SUBJECT MODE
     user_text = f"""
 তুমি একজন {subject} বিষয়ের HSC শিক্ষক।
 
@@ -571,7 +607,7 @@ if prompt:
 
             st.success("✅ PDF Uploaded")
 
-    # ADD PDF TEXT
+    # Add PDF text
     if pdf_text:
 
         user_text += f"\n\nPDF Content:\n{pdf_text[:4000]}"
@@ -664,7 +700,7 @@ if prompt:
 
             full_response = f"❌ Error:\n{str(e)}"
 
-        # TYPE EFFECT
+        # Typing effect
         typed_text = ""
 
         for char in full_response:
