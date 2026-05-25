@@ -5,3 +5,5 @@ requests
 google-genai
 PyPDF2
 firebase-admin
+streamlit-authenticator
+pyrebase4
