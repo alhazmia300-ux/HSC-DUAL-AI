@@ -12,9 +12,9 @@ import pyrebase
 from firebase_admin import credentials
 from firebase_admin import firestore
 
-# =========================================
+# =========================================================
 # PAGE CONFIG
-# =========================================
+# =========================================================
 
 st.set_page_config(
     page_title="🎓 HSC Dual AI Tutor",
@@ -22,28 +22,28 @@ st.set_page_config(
     layout="centered"
 )
 
-# =========================================
-# CLEAN UI
-# =========================================
+# =========================================================
+# CUSTOM CSS
+# =========================================================
 
 st.markdown("""
 <style>
 
-/* App background */
+/* Main app */
 .stApp {
     background-color: var(--background-color);
 }
 
 /* Chat box */
 [data-testid="stChatMessage"] {
-    border-radius: 18px;
-    padding: 14px;
+    border-radius: 16px;
+    padding: 12px;
     margin-bottom: 12px;
 }
 
 /* Sidebar */
 section[data-testid="stSidebar"] {
-    border-right: 1px solid rgba(128,128,128,0.15);
+    border-right: 1px solid rgba(128,128,128,0.2);
 }
 
 /* Buttons */
@@ -52,34 +52,34 @@ section[data-testid="stSidebar"] {
     width: 100%;
 }
 
+/* Input */
+.stTextInput input {
+    border-radius: 12px;
+}
+
 /* Chat Input */
 .stChatInputContainer {
     border-top: 1px solid rgba(128,128,128,0.15);
 }
 
-/* Login box */
-.stTextInput input {
-    border-radius: 12px;
-}
-
 </style>
 """, unsafe_allow_html=True)
 
-# =========================================
+# =========================================================
 # HEADER
-# =========================================
+# =========================================================
 
 st.title("🎓 HSC Dual AI Tutor")
 
 st.subheader("Gemini + Llama3 দিয়ে HSC প্রস্তুতি")
 
-st.write("প্রশ্ন করো, ছবি বা PDF আপলোড করো, MCQ তৈরি করো!")
+st.write("প্রশ্ন করো, ছবি/PDF আপলোড করো, MCQ তৈরি করো!")
 
 st.caption("🚀 Created by ALhaz")
 
-# =========================================
-# LOAD SECRETS
-# =========================================
+# =========================================================
+# SECRETS
+# =========================================================
 
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
 
@@ -89,9 +89,9 @@ TELEGRAM_BOT_TOKEN = st.secrets.get("TELEGRAM_BOT_TOKEN")
 
 TELEGRAM_CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID")
 
-# =========================================
-# FIREBASE WEB CONFIG
-# =========================================
+# =========================================================
+# FIREBASE CONFIG
+# =========================================================
 
 firebase_config = {
     "apiKey": st.secrets["FIREBASE_API_KEY"],
@@ -107,9 +107,9 @@ firebase = pyrebase.initialize_app(firebase_config)
 
 auth = firebase.auth()
 
-# =========================================
+# =========================================================
 # FIREBASE ADMIN
-# =========================================
+# =========================================================
 
 if not firebase_admin._apps:
 
@@ -123,12 +123,16 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-# =========================================
-# LOGIN SYSTEM
-# =========================================
+# =========================================================
+# AUTH SESSION
+# =========================================================
 
 if "user" not in st.session_state:
     st.session_state.user = None
+
+# =========================================================
+# LOGIN SYSTEM
+# =========================================================
 
 if st.session_state.user is None:
 
@@ -188,13 +192,13 @@ if st.session_state.user is None:
 
             except Exception as e:
 
-                st.error(f"❌ {str(e)}")
+                st.error("❌ Invalid email or password")
 
     st.stop()
 
-# =========================================
+# =========================================================
 # USER ID
-# =========================================
+# =========================================================
 
 def get_unique_user_id():
 
@@ -212,60 +216,91 @@ def get_unique_user_id():
 
 USER_ID = get_unique_user_id()
 
-# =========================================
+# =========================================================
 # SAVE CHAT
-# =========================================
+# =========================================================
 
 def save_message(role, content):
 
-    db.collection("chat_history").add({
-        "user_id": USER_ID,
-        "role": role,
-        "content": content,
-        "timestamp": firestore.SERVER_TIMESTAMP
-    })
+    try:
 
-# =========================================
+        db.collection("chat_history").add({
+            "user_id": USER_ID,
+            "role": role,
+            "content": content,
+            "timestamp": firestore.SERVER_TIMESTAMP
+        })
+
+    except Exception as e:
+
+        st.error(f"❌ Save Error: {str(e)}")
+
+# =========================================================
 # LOAD CHAT HISTORY
-# =========================================
+# =========================================================
 
 def load_chat_history():
 
-    chats = db.collection("chat_history") \
-        .where("user_id", "==", USER_ID) \
-        .order_by("timestamp") \
-        .stream()
+    try:
 
-    messages = []
+        chats = db.collection("chat_history") \
+            .where("user_id", "==", USER_ID) \
+            .stream()
 
-    for chat in chats:
+        messages = []
 
-        data = chat.to_dict()
+        chat_list = []
 
-        messages.append({
-            "role": data["role"],
-            "content": data["content"]
-        })
+        for chat in chats:
 
-    return messages
+            data = chat.to_dict()
 
-# =========================================
+            chat_list.append(data)
+
+        # Sort manually
+        chat_list = sorted(
+            chat_list,
+            key=lambda x: str(x.get("timestamp", ""))
+        )
+
+        for data in chat_list:
+
+            messages.append({
+                "role": data["role"],
+                "content": data["content"]
+            })
+
+        return messages
+
+    except Exception as e:
+
+        st.error(f"❌ Chat Load Error: {str(e)}")
+
+        return []
+
+# =========================================================
 # CLEAR CHAT
-# =========================================
+# =========================================================
 
 def clear_chat_history():
 
-    chats = db.collection("chat_history") \
-        .where("user_id", "==", USER_ID) \
-        .stream()
+    try:
 
-    for chat in chats:
+        chats = db.collection("chat_history") \
+            .where("user_id", "==", USER_ID) \
+            .stream()
 
-        chat.reference.delete()
+        for chat in chats:
 
-# =========================================
+            chat.reference.delete()
+
+    except Exception as e:
+
+        st.error(f"❌ Clear Error: {str(e)}")
+
+# =========================================================
 # SIDEBAR
-# =========================================
+# =========================================================
 
 st.sidebar.title("⚙️ Settings")
 
@@ -291,7 +326,7 @@ model_choice = st.sidebar.radio(
     "🤖 AI Model",
     [
         "Gemini (Multimodal)",
-        "Llama3 (Groq - Text Only)"
+        "Llama3 (Text Only)"
     ]
 )
 
@@ -299,30 +334,30 @@ subject = st.sidebar.selectbox(
     "📚 বিষয় নির্বাচন করো",
     [
 
-        # SCIENCE
+        # Science
         "Physics",
         "Chemistry",
         "Biology",
         "Higher Math",
 
-        # HUMANITIES
+        # Arts
         "History",
         "Economics",
         "Sociology",
-        "Civics",
         "Geography",
+        "Civics",
 
-        # BUSINESS
+        # Commerce
         "Accounting",
         "Finance",
         "Management",
 
-        # COMPULSORY
+        # Compulsory
         "Bangla",
         "English",
         "ICT",
 
-        # OPTIONAL
+        # Optional
         "Statistics",
         "Agriculture",
         "Psychology",
@@ -330,19 +365,23 @@ subject = st.sidebar.selectbox(
     ]
 )
 
-# =========================================
-# TELEGRAM NOTIFICATION
-# =========================================
+# =========================================================
+# TELEGRAM
+# =========================================================
 
 def send_telegram(user_id, q_text, model_name):
 
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+    if not TELEGRAM_BOT_TOKEN:
+        return
+
+    if not TELEGRAM_CHAT_ID:
         return
 
     msg = f"""
-🔔 নতুন প্রশ্ন!
+🔔 নতুন প্রশ্ন
 
 👤 User: {user_id}
+
 🤖 Model: {model_name}
 
 ❓ Question:
@@ -365,9 +404,9 @@ def send_telegram(user_id, q_text, model_name):
     except:
         pass
 
-# =========================================
+# =========================================================
 # GEMINI
-# =========================================
+# =========================================================
 
 def call_gemini(api_key, text_prompt, image_pil=None):
 
@@ -375,6 +414,7 @@ def call_gemini(api_key, text_prompt, image_pil=None):
 
         client = genai.Client(api_key=api_key)
 
+        # IMAGE MODE
         if image_pil:
 
             response = client.models.generate_content(
@@ -385,6 +425,7 @@ def call_gemini(api_key, text_prompt, image_pil=None):
                 ]
             )
 
+        # TEXT MODE
         else:
 
             response = client.models.generate_content(
@@ -398,7 +439,7 @@ def call_gemini(api_key, text_prompt, image_pil=None):
 
         error_text = str(e)
 
-        # GROQ FALLBACK
+        # FALLBACK TO GROQ
         if "429" in error_text:
 
             try:
@@ -424,13 +465,13 @@ def call_gemini(api_key, text_prompt, image_pil=None):
 
             except Exception as groq_error:
 
-                return f"❌ Fallback failed:\n{str(groq_error)}"
+                return f"❌ Fallback Error:\n{str(groq_error)}"
 
         return f"❌ Gemini Error:\n{error_text}"
 
-# =========================================
+# =========================================================
 # MCQ GENERATOR
-# =========================================
+# =========================================================
 
 if st.sidebar.button("📝 Generate MCQ"):
 
@@ -450,17 +491,17 @@ if st.sidebar.button("📝 Generate MCQ"):
 
     st.write(mcq_response)
 
-# =========================================
+# =========================================================
 # LOAD HISTORY
-# =========================================
+# =========================================================
 
 if "messages" not in st.session_state:
 
     st.session_state.messages = load_chat_history()
 
-# =========================================
+# =========================================================
 # SHOW HISTORY
-# =========================================
+# =========================================================
 
 for msg in st.session_state.messages:
 
@@ -470,19 +511,19 @@ for msg in st.session_state.messages:
 
 st.markdown("---")
 
-# =========================================
+# =========================================================
 # CHAT INPUT
-# =========================================
+# =========================================================
 
 prompt = st.chat_input(
-    "প্রশ্ন লেখো অথবা ছবি / PDF আপলোড করো...",
+    "প্রশ্ন লেখো অথবা ছবি/PDF আপলোড করো...",
     accept_file=True,
     file_type=["jpg", "jpeg", "png", "pdf"]
 )
 
-# =========================================
+# =========================================================
 # MAIN CHAT
-# =========================================
+# =========================================================
 
 if prompt:
 
@@ -494,7 +535,7 @@ if prompt:
 
     pdf_text = ""
 
-    # SUBJECT MODE
+    # SUBJECT PROMPT
     user_text = f"""
 তুমি একজন {subject} বিষয়ের HSC শিক্ষক।
 
@@ -504,7 +545,7 @@ if prompt:
 {user_text}
 """
 
-    # FILE PROCESS
+    # FILES
     if uploaded_files and len(uploaded_files) > 0:
 
         uploaded_file = uploaded_files[0]
@@ -523,19 +564,19 @@ if prompt:
 
             for page in reader.pages:
 
-                extracted = page.extract_text()
+                text = page.extract_text()
 
-                if extracted:
-                    pdf_text += extracted
+                if text:
+                    pdf_text += text
 
             st.success("✅ PDF Uploaded")
 
-    # PDF TEXT
+    # ADD PDF TEXT
     if pdf_text:
 
         user_text += f"\n\nPDF Content:\n{pdf_text[:4000]}"
 
-    # SHOW USER MESSAGE
+    # USER MESSAGE
     with st.chat_message("user"):
 
         if image_to_send:
@@ -570,7 +611,10 @@ if prompt:
         model_choice
     )
 
+    # =====================================================
     # ASSISTANT
+    # =====================================================
+
     with st.chat_message("assistant"):
 
         response_placeholder = st.empty()
@@ -620,7 +664,7 @@ if prompt:
 
             full_response = f"❌ Error:\n{str(e)}"
 
-        # TYPING EFFECT
+        # TYPE EFFECT
         typed_text = ""
 
         for char in full_response:
