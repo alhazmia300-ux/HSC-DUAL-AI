@@ -3,7 +3,6 @@ from groq import Groq
 from PIL import Image
 from google import genai
 import requests
-import hashlib
 import time
 import PyPDF2
 import firebase_admin
@@ -30,7 +29,12 @@ st.set_page_config(
 st.markdown("""
 <style>
 
-/* Chat messages */
+/* App background */
+.stApp {
+    background-color: var(--background-color);
+}
+
+/* Chat box */
 [data-testid="stChatMessage"] {
     border-radius: 18px;
     padding: 14px;
@@ -45,11 +49,17 @@ section[data-testid="stSidebar"] {
 /* Buttons */
 .stButton > button {
     border-radius: 12px;
+    width: 100%;
 }
 
-/* Chat input */
+/* Chat Input */
 .stChatInputContainer {
-    border-top: 1px solid rgba(128,128,128,0.2);
+    border-top: 1px solid rgba(128,128,128,0.15);
+}
+
+/* Login box */
+.stTextInput input {
+    border-radius: 12px;
 }
 
 </style>
@@ -98,7 +108,7 @@ firebase = pyrebase.initialize_app(firebase_config)
 auth = firebase.auth()
 
 # =========================================
-# FIREBASE ADMIN INIT
+# FIREBASE ADMIN
 # =========================================
 
 if not firebase_admin._apps:
@@ -136,7 +146,7 @@ if st.session_state.user is None:
         type="password"
     )
 
-    # SIGNUP
+    # SIGN UP
     if auth_mode == "Sign Up":
 
         if st.button("Create Account"):
@@ -150,9 +160,11 @@ if st.session_state.user is None:
 
                 st.success("✅ Account created successfully")
 
+                st.info("👉 এখন Login অপশন থেকে login করো")
+
             except Exception as e:
 
-                st.error(f"❌ {e}")
+                st.error(f"❌ {str(e)}")
 
     # LOGIN
     else:
@@ -166,15 +178,17 @@ if st.session_state.user is None:
                     password
                 )
 
+                user["email"] = email
+
                 st.session_state.user = user
 
                 st.success("✅ Login successful")
 
                 st.rerun()
 
-            except:
+            except Exception as e:
 
-                st.error("❌ Invalid email or password")
+                st.error(f"❌ {str(e)}")
 
     st.stop()
 
@@ -199,7 +213,7 @@ def get_unique_user_id():
 USER_ID = get_unique_user_id()
 
 # =========================================
-# FIREBASE SAVE CHAT
+# SAVE CHAT
 # =========================================
 
 def save_message(role, content):
@@ -286,48 +300,32 @@ subject = st.sidebar.selectbox(
     [
 
         # SCIENCE
-        "Physics 1st Paper",
-        "Physics 2nd Paper",
-        "Chemistry 1st Paper",
-        "Chemistry 2nd Paper",
-        "Biology 1st Paper",
-        "Biology 2nd Paper",
-        "Higher Math 1st Paper",
-        "Higher Math 2nd Paper",
-
-        # BUSINESS STUDIES
-        "Accounting 1st Paper",
-        "Accounting 2nd Paper",
-        "Finance & Banking 1st Paper",
-        "Finance & Banking 2nd Paper",
-        "Business Organization & Management 1st Paper",
-        "Business Organization & Management 2nd Paper",
+        "Physics",
+        "Chemistry",
+        "Biology",
+        "Higher Math",
 
         # HUMANITIES
-        "History 1st Paper",
-        "History 2nd Paper",
+        "History",
+        "Economics",
+        "Sociology",
         "Civics",
-        "Economics 1st Paper",
-        "Economics 2nd Paper",
-        "Sociology 1st Paper",
-        "Sociology 2nd Paper",
-        "Islamic History & Culture",
-        "Logic",
-        "Social Work",
         "Geography",
 
+        # BUSINESS
+        "Accounting",
+        "Finance",
+        "Management",
+
         # COMPULSORY
-        "Bangla 1st Paper",
-        "Bangla 2nd Paper",
-        "English 1st Paper",
-        "English 2nd Paper",
+        "Bangla",
+        "English",
         "ICT",
 
         # OPTIONAL
-        "Agriculture",
         "Statistics",
+        "Agriculture",
         "Psychology",
-        "Home Science",
         "Islamic Studies"
     ]
 )
@@ -336,19 +334,16 @@ subject = st.sidebar.selectbox(
 # TELEGRAM NOTIFICATION
 # =========================================
 
-def send_telegram(user_id, q_text, model_name, has_file=False):
+def send_telegram(user_id, q_text, model_name):
 
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
-
-    file_status = "📎 File" if has_file else "📝 Text"
 
     msg = f"""
 🔔 নতুন প্রশ্ন!
 
 👤 User: {user_id}
 🤖 Model: {model_name}
-📂 Type: {file_status}
 
 ❓ Question:
 {q_text}
@@ -371,7 +366,7 @@ def send_telegram(user_id, q_text, model_name, has_file=False):
         pass
 
 # =========================================
-# GEMINI FUNCTION
+# GEMINI
 # =========================================
 
 def call_gemini(api_key, text_prompt, image_pil=None):
@@ -380,7 +375,6 @@ def call_gemini(api_key, text_prompt, image_pil=None):
 
         client = genai.Client(api_key=api_key)
 
-        # IMAGE + TEXT
         if image_pil:
 
             response = client.models.generate_content(
@@ -391,7 +385,6 @@ def call_gemini(api_key, text_prompt, image_pil=None):
                 ]
             )
 
-        # TEXT ONLY
         else:
 
             response = client.models.generate_content(
@@ -482,7 +475,7 @@ st.markdown("---")
 # =========================================
 
 prompt = st.chat_input(
-    "প্রশ্ন লেখো অথবা PDF / ছবি আপলোড করো...",
+    "প্রশ্ন লেখো অথবা ছবি / PDF আপলোড করো...",
     accept_file=True,
     file_type=["jpg", "jpeg", "png", "pdf"]
 )
@@ -501,10 +494,7 @@ if prompt:
 
     pdf_text = ""
 
-    has_file_flag = False
-
     # SUBJECT MODE
-
     user_text = f"""
 তুমি একজন {subject} বিষয়ের HSC শিক্ষক।
 
@@ -514,24 +504,19 @@ if prompt:
 {user_text}
 """
 
-    # FILE HANDLE
-
+    # FILE PROCESS
     if uploaded_files and len(uploaded_files) > 0:
 
         uploaded_file = uploaded_files[0]
 
         file_name = uploaded_file.name.lower()
 
-        has_file_flag = True
-
         # IMAGE
-
         if file_name.endswith((".jpg", ".jpeg", ".png")):
 
             image_to_send = Image.open(uploaded_file)
 
         # PDF
-
         elif file_name.endswith(".pdf"):
 
             reader = PyPDF2.PdfReader(uploaded_file)
@@ -545,14 +530,12 @@ if prompt:
 
             st.success("✅ PDF Uploaded")
 
-    # ADD PDF TEXT
-
+    # PDF TEXT
     if pdf_text:
 
         user_text += f"\n\nPDF Content:\n{pdf_text[:4000]}"
 
     # SHOW USER MESSAGE
-
     with st.chat_message("user"):
 
         if image_to_send:
@@ -572,8 +555,7 @@ if prompt:
             else "[File Uploaded]"
         )
 
-    # SAVE USER MESSAGE
-
+    # SAVE USER
     st.session_state.messages.append({
         "role": "user",
         "content": user_text
@@ -581,17 +563,14 @@ if prompt:
 
     save_message("user", user_text)
 
-    # SEND TELEGRAM
-
+    # TELEGRAM
     send_telegram(
         USER_ID,
         user_text,
-        model_choice,
-        has_file=has_file_flag
+        model_choice
     )
 
-    # ASSISTANT MESSAGE
-
+    # ASSISTANT
     with st.chat_message("assistant"):
 
         response_placeholder = st.empty()
@@ -601,35 +580,23 @@ if prompt:
         try:
 
             # GEMINI
-
             if model_choice == "Gemini (Multimodal)":
 
-                if not GEMINI_API_KEY:
+                full_response = call_gemini(
+                    GEMINI_API_KEY,
+                    user_text,
+                    image_to_send
+                )
 
-                    full_response = "⚠️ Gemini API Key সেট করা নেই"
-
-                else:
-
-                    full_response = call_gemini(
-                        GEMINI_API_KEY,
-                        user_text,
-                        image_to_send
-                    )
-
-            # LLAMA3
-
-            elif model_choice == "Llama3 (Groq - Text Only)":
+            # LLAMA
+            else:
 
                 if image_to_send:
 
                     full_response = (
                         "⚠️ Llama3 ছবি বুঝতে পারে না। "
-                        "ছবির জন্য Gemini ব্যবহার করো।"
+                        "Gemini ব্যবহার করো।"
                     )
-
-                elif not GROQ_API_KEY:
-
-                    full_response = "⚠️ Groq API Key সেট করা নেই"
 
                 else:
 
@@ -651,10 +618,9 @@ if prompt:
 
         except Exception as e:
 
-            full_response = f"❌ Internal Error:\n{str(e)}"
+            full_response = f"❌ Error:\n{str(e)}"
 
-        # STREAM EFFECT
-
+        # TYPING EFFECT
         typed_text = ""
 
         for char in full_response:
@@ -666,7 +632,6 @@ if prompt:
             time.sleep(0.01)
 
         # SAVE RESPONSE
-
         st.session_state.messages.append({
             "role": "assistant",
             "content": full_response
