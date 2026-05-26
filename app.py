@@ -392,93 +392,50 @@ if not st.session_state.logged_in:
 # SIDEBAR
 # ======================================================
 
-st.sidebar.success(
-    st.session_state.user_email
-)
+st.sidebar.success(st.session_state.user_email)
 
 # ======================================================
-# NEW CHAT
+# NEW CHAT (ক্লিন ও ফিক্সড)
 # ======================================================
-
-if st.sidebar.button("➕ New Chat"):
-
-    create_new_chat()
-
+if st.sidebar.button("➕ New Chat", use_container_width=True):
+    # সেশনের মেসেজ খালি করে নতুন চ্যাট শুরু করা
+    st.session_state.messages = []
+    # যদি আপনার কোডে কারেন্ট চ্যাট আইডি ট্র্যাকিং থাকে, তবে তা রিমুভ বা রিসেট করবে
+    if "current_chat_id" in st.session_state:
+        st.session_state.current_chat_id = None
     st.rerun()
 
 # ======================================================
-# CHAT HISTORY
+# CLEAR HISTORY & LOGOUT
 # ======================================================
+if st.sidebar.button("🗑️ Clear Chat History", use_container_width=True):
+    clear_chat_history()
+    st.session_state.messages = []
+    st.rerun()
 
-st.sidebar.markdown("## 💬 Chats")
-
-chat_list = get_chat_list()
-
-for chat in chat_list:
-
-    if st.sidebar.button(
-        chat["title"],
-        key=chat["chat_id"]
-    ):
-
-        st.session_state.current_chat_id = chat["chat_id"]
-
-        st.session_state.messages = load_messages(
-            chat["chat_id"]
-        )
-
-        st.rerun()
-
-# ======================================================
-# LOGOUT
-# ======================================================
-
-if st.sidebar.button("🚪 Logout"):
-
+if st.sidebar.button("🚪 Logout", use_container_width=True):
     logout()
-
     st.rerun()
 
-# ======================================================
-# AUTO CREATE CHAT
-# ======================================================
-
-if not st.session_state.current_chat_id:
-
-    create_new_chat()
+st.sidebar.markdown("---")
 
 # ======================================================
 # MODEL SELECT
 # ======================================================
-
 model_choice = st.sidebar.radio(
     "🤖 AI Model",
-    [
-        "Gemini",
-        "Llama3"
-    ]
+    ["Gemini", "Llama3"]
 )
 
 # ======================================================
 # SUBJECT SELECT
 # ======================================================
-
 subject = st.sidebar.selectbox(
     "📚 Subject",
     [
-        "Physics",
-        "Chemistry",
-        "Biology",
-        "Higher Math",
-        "Bangla",
-        "English",
-        "ICT",
-        "Economics",
-        "Accounting",
-        "History",
-        "Sociology",
-        "Finance",
-        "Management"
+        "Physics", "Chemistry", "Biology", "Higher Math",
+        "Bangla", "English", "ICT", "Economics", 
+        "Accounting", "History", "Sociology", "Finance", "Management"
     ]
 )
 
