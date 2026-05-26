@@ -1,10 +1,8 @@
 streamlit
 groq
-Pillow
-requests
 google-genai
+pillow
+requests
 PyPDF2
 firebase-admin
-streamlit-authenticator
-pyrebase4
-streamlit-javascript
+streamlit-cookies-manager
