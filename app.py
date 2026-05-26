@@ -36,15 +36,16 @@ st.set_page_config(
 st.markdown("""
 <style>
 
+/* Main */
 .stApp {
     background-color: var(--background-color);
 }
 
-/* Chat bubbles */
+/* Chat bubble */
 [data-testid="stChatMessage"] {
     border-radius: 18px;
     padding: 14px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 /* Buttons */
@@ -68,7 +69,30 @@ section[data-testid="stSidebar"] {
     border-right: 1px solid rgba(128,128,128,0.15);
 }
 
-/* Premium Login */
+/* Compact sidebar */
+section[data-testid="stSidebar"] div.block-container {
+    padding-top: 1rem;
+    padding-bottom: 0rem;
+    gap: 0.3rem;
+}
+
+div[data-testid="stVerticalBlock"] > div {
+    margin-bottom: 0.2rem;
+}
+
+section[data-testid="stSidebar"] .stButton {
+    margin-bottom: -8px;
+}
+
+section[data-testid="stSidebar"] .stRadio {
+    margin-bottom: -10px;
+}
+
+section[data-testid="stSidebar"] .stSelectbox {
+    margin-bottom: -10px;
+}
+
+/* Login page */
 .login-box {
     text-align:center;
     padding-top:80px;
@@ -93,9 +117,7 @@ section[data-testid="stSidebar"] {
 # ======================================================
 
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
-
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY")
-
 FIREBASE_API_KEY = st.secrets.get("FIREBASE_API_KEY")
 
 # ======================================================
@@ -136,15 +158,10 @@ db = init_firestore()
 # ======================================================
 
 defaults = {
-
     "logged_in": False,
-
     "user_email": "",
-
     "user_name": "",
-
     "messages": [],
-
     "current_chat_id": None
 }
 
@@ -223,17 +240,13 @@ def logout():
     cookies.save()
 
     st.session_state.logged_in = False
-
     st.session_state.user_email = ""
-
     st.session_state.user_name = ""
-
     st.session_state.messages = []
-
     st.session_state.current_chat_id = None
 
 # ======================================================
-# CHAT DATABASE
+# CREATE CHAT
 # ======================================================
 
 def create_new_chat():
@@ -255,9 +268,14 @@ def create_new_chat():
 
     st.session_state.messages = []
 
+# ======================================================
+# SAVE MESSAGE
+# ======================================================
+
 def save_message(role, content):
 
     if not st.session_state.current_chat_id:
+
         create_new_chat()
 
     db.collection("users") \
@@ -273,6 +291,10 @@ def save_message(role, content):
 
             "created_at": firestore.SERVER_TIMESTAMP
         })
+
+# ======================================================
+# LOAD MESSAGES
+# ======================================================
 
 def load_messages(chat_id):
 
@@ -302,6 +324,10 @@ def load_messages(chat_id):
 
     return temp
 
+# ======================================================
+# CHAT LIST
+# ======================================================
+
 def get_chat_list():
 
     chats = db.collection("users") \
@@ -319,12 +345,14 @@ def get_chat_list():
 
         data = chat.to_dict()
 
-        temp.append({
+        if data.get("title") != "New Chat":
 
-            "chat_id": chat.id,
+            temp.append({
 
-            "title": data.get("title", "New Chat")
-        })
+                "chat_id": chat.id,
+
+                "title": data.get("title")
+            })
 
     return temp
 
@@ -395,15 +423,11 @@ if not st.session_state.logged_in:
 
     if submit:
 
-        if not email or not password:
+        if not name or not email or not password:
 
             st.warning("সব তথ্য পূরণ করো")
 
             st.stop()
-
-        # ==================================================
-        # EMAIL VALIDATION
-        # ==================================================
 
         auth_email = email
 
@@ -503,9 +527,9 @@ if not st.session_state.logged_in:
 # MAIN HEADER
 # ======================================================
 
-top1, top2, top3 = st.columns([8,1,1])
+header_left, header_right = st.columns([12,1])
 
-with top1:
+with header_left:
 
     st.title("🎓 HSC Dual AI Tutor")
 
@@ -515,7 +539,11 @@ with top1:
 
     st.caption("🚀 Created by ALhaz")
 
-with top3:
+with header_right:
+
+    st.write("")
+
+    st.write("")
 
     if st.button("➕", help="New Chat"):
 
@@ -560,7 +588,7 @@ if profile_pic:
 st.sidebar.markdown("---")
 
 # ======================================================
-# MODEL SELECT
+# MODEL
 # ======================================================
 
 model_choice = st.sidebar.radio(
@@ -569,7 +597,7 @@ model_choice = st.sidebar.radio(
 )
 
 # ======================================================
-# SUBJECT SELECT
+# SUBJECT
 # ======================================================
 
 subject = st.sidebar.selectbox(
@@ -655,7 +683,7 @@ except:
 st.sidebar.markdown("---")
 
 # ======================================================
-# LOGOUT + DELETE
+# LOGOUT
 # ======================================================
 
 if st.sidebar.button(
@@ -666,6 +694,10 @@ if st.sidebar.button(
     logout()
 
     st.rerun()
+
+# ======================================================
+# DELETE HISTORY
+# ======================================================
 
 if st.sidebar.button(
     "🗑️ Delete All History",
@@ -724,9 +756,7 @@ def call_gemini(prompt_text, image_obj=None):
         if image_obj:
 
             response = client.models.generate_content(
-
                 model="gemini-2.5-flash",
-
                 contents=[
                     prompt_text,
                     image_obj
@@ -736,9 +766,7 @@ def call_gemini(prompt_text, image_obj=None):
         else:
 
             response = client.models.generate_content(
-
                 model="gemini-2.5-flash",
-
                 contents=prompt_text
             )
 
@@ -759,25 +787,18 @@ for msg in st.session_state.messages:
         st.markdown(msg["content"])
 
 # ======================================================
-# MAIN CHAT
+# MAIN CHAT SYSTEM
 # ======================================================
 
 if prompt:
-
-    # ==================================================
-    # CREATE CHAT ONLY WHEN USER SENDS MESSAGE
-    # ==================================================
 
     if not st.session_state.current_chat_id:
 
         create_new_chat()
 
     image_to_send = None
-
     pdf_text = ""
-
     user_text = ""
-
     uploaded_file = None
 
     if prompt.text:
@@ -789,13 +810,14 @@ if prompt:
         uploaded_file = prompt.files[0]
 
     # ==================================================
-    # IMAGE
+    # FILE PROCESSING
     # ==================================================
 
     if uploaded_file:
 
         file_name = uploaded_file.name.lower()
 
+        # IMAGE
         if file_name.endswith((
             ".jpg",
             ".jpeg",
@@ -806,10 +828,7 @@ if prompt:
                 uploaded_file
             )
 
-        # ==================================================
         # PDF
-        # ==================================================
-
         elif file_name.endswith(".pdf"):
 
             try:
@@ -893,7 +912,7 @@ PDF:
     )
 
     # ==================================================
-    # AUTO TITLE
+    # AUTO CHAT TITLE
     # ==================================================
 
     if len(st.session_state.messages) <= 2:
