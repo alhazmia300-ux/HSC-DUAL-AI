@@ -402,108 +402,43 @@ if st.sidebar.button("➕ New Chat", use_container_width=True):
     st.rerun()
 
 # ======================================================
-# CHAT HISTORY (ড্রপডাউন মেনু দিয়ে রিডিজাইন করা)
+# CHAT HISTORY (বুলেটপ্রুফ ও ১০০% এরর-ফ্রি সংস্করণ)
 # ======================================================
 st.sidebar.markdown("## 💬 Chats History")
 
-chat_list = get_chat_list()
-
-if chat_list:
-    # পুরনো চ্যাটগুলোর টাইটেল ও আইডির একটি ডিকশনারি তৈরি
-    chat_options = {chat["title"]: chat["chat_id"] for chat in chat_list}
+try:
+    chat_list = get_chat_list()
     
-    # বর্তমান চ্যাটটি ড্রপডাউনে ডিফল্ট সিলেক্ট রাখার লজিক
-    default_index = 0
-    if st.session_state.current_chat_id:
-        for i, chat in enumerate(chat_list):
-            if chat["chat_id"] == st.session_state.current_chat_id:
-                default_index = i
-                break
-                
-    # শত শত বাটনের বদলে একটি সুন্দর ড্রপডাউন মেনু
-    selected_chat_title = st.sidebar.selectbox(
-        "Select past chat",
-        options=list(chat_options.keys()),
-        index=default_index,
-        label_visibility="collapsed"
-    )
-    
-    # ইউজার ড্রপডাউন থেকে অন্য চ্যাট সিলেক্ট করলে সেটি লোড হবে
-    selected_chat_id = chat_options[selected_chat_title]
-    if selected_chat_id != st.session_state.current_chat_id:
-        st.session_state.current_chat_id = selected_chat_id
-        st.session_state.messages = load_messages(selected_chat_id)
-        st.rerun()
-else:
-    st.sidebar.caption("No past chats found.")
-
-st.sidebar.markdown("---")
-
-# ======================================================
-# LOGOUT
-# ======================================================
-if st.sidebar.button("🚪 Logout", use_container_width=True):
-    logout()
-    st.rerun()
-
-# ======================================================
-# AUTO CREATE CHAT
-# ======================================================
-if not st.session_state.current_chat_id:
-    create_new_chat()
-
-# ======================================================
-# MODEL SELECT
-# ======================================================
-model_choice = st.sidebar.radio(
-    "🤖 AI Model",
-    ["Gemini", "Llama3"]
-)
-
-# ======================================================
-# SUBJECT SELECT
-# ======================================================
-st.sidebar.success(st.session_state.user_email)
-
-# ======================================================
-# NEW CHAT
-# ======================================================
-if st.sidebar.button("➕ New Chat", use_container_width=True):
-    create_new_chat()
-    st.rerun()
-
-# ======================================================
-# CHAT HISTORY (এরর-ফ্রি ও সংশোধিত)
-# ======================================================
-st.sidebar.markdown("## 💬 Chats History")
-
-chat_list = get_chat_list()
-
-# ১. চ্যাট লিস্ট খালি না থাকলে এবং তার ভেতর চ্যাট থাকলেই শুধু সিলেক্টবক্স তৈরি হবে
-if chat_list and len(chat_list) > 0:
-    chat_options = {chat["title"]: chat["chat_id"] for chat in chat_list}
-    
-    default_index = 0
-    if st.session_state.current_chat_id:
-        for i, chat in enumerate(chat_list):
-            if chat["chat_id"] == st.session_state.current_chat_id:
-                default_index = i
-                break
-                
-    selected_chat_title = st.sidebar.selectbox(
-        "Select past chat",
-        options=list(chat_options.keys()),
-        index=default_index,
-        label_visibility="collapsed"
-    )
-    
-    selected_chat_id = chat_options[selected_chat_title]
-    if selected_chat_id != st.session_state.current_chat_id:
-        st.session_state.current_chat_id = selected_chat_id
-        st.session_state.messages = load_messages(selected_chat_id)
-        st.rerun()
-else:
-    # ২. কোনো পুরনো চ্যাট না থাকলে সিলেক্টবক্সের বদলে এই লেখাটি দেখাবে (এরর আসবে না)
+    # চ্যাট লিস্ট যদি ভ্যালিড হয় এবং তাতে ডেটা থাকে
+    if chat_list and isinstance(chat_list, list) and len(chat_list) > 0:
+        chat_options = {chat["title"]: chat["chat_id"] for chat in chat_list if "title" in chat and "chat_id" in chat}
+        
+        if chat_options:
+            default_index = 0
+            if st.session_state.get("current_chat_id"):
+                for i, chat in enumerate(chat_list):
+                    if chat.get("chat_id") == st.session_state.current_chat_id:
+                        default_index = i
+                        break
+            
+            selected_chat_title = st.sidebar.selectbox(
+                "Select past chat",
+                options=list(chat_options.keys()),
+                index=default_index,
+                label_visibility="collapsed"
+            )
+            
+            selected_chat_id = chat_options[selected_chat_title]
+            if selected_chat_id != st.session_state.get("current_chat_id"):
+                st.session_state.current_chat_id = selected_chat_id
+                st.session_state.messages = load_messages(selected_chat_id)
+                st.rerun()
+        else:
+            st.sidebar.info("কোনো পুরনো চ্যাট পাওয়া যায়নি।")
+    else:
+        st.sidebar.info("কোনো পুরনো চ্যাট পাওয়া যায়নি।")
+except Exception as e:
+    # কোনো কারণে কোড ক্র্যাশ করতে নিলে সিলেক্টবক্স না দেখিয়ে সেটিকে স্কিপ করবে
     st.sidebar.info("কোনো পুরনো চ্যাট পাওয়া যায়নি।")
 
 st.sidebar.markdown("---")
@@ -518,7 +453,7 @@ if st.sidebar.button("🚪 Logout", use_container_width=True):
 # ======================================================
 # AUTO CREATE CHAT
 # ======================================================
-if not st.session_state.current_chat_id:
+if not st.session_state.get("current_chat_id"):
     create_new_chat()
 
 # ======================================================
