@@ -31,7 +31,7 @@ st.set_page_config(
 st.markdown("""
 <style>
 
-/* Main App */
+/* App Background */
 .stApp {
     background-color: var(--background-color);
 }
@@ -54,7 +54,7 @@ section[data-testid="stSidebar"] {
     border-right: 1px solid rgba(128,128,128,0.15);
 }
 
-/* Input Box */
+/* Input */
 .stTextInput input {
     border-radius: 12px;
 }
@@ -142,6 +142,9 @@ if "messages" not in st.session_state:
 if "id_token" not in st.session_state:
     st.session_state.id_token = ""
 
+if "history_loaded" not in st.session_state:
+    st.session_state.history_loaded = False
+
 # ======================================================
 # AUTO LOGIN FROM COOKIE
 # ======================================================
@@ -153,7 +156,7 @@ if cookies.get("logged_in") == "true":
     st.session_state.user_email = cookies.get("user_email")
 
 # ======================================================
-# FIREBASE INIT
+# FIREBASE AUTH
 # ======================================================
 
 def signup(email, password):
@@ -220,6 +223,7 @@ def logout():
 
     cookies["logged_in"] = ""
     cookies["user_email"] = ""
+
     cookies.save()
 
     st.session_state.logged_in = False
@@ -227,6 +231,8 @@ def logout():
     st.session_state.user_email = ""
 
     st.session_state.messages = []
+
+    st.session_state.history_loaded = False
 
 # ======================================================
 # USER ID
@@ -259,11 +265,14 @@ def save_message(role, content):
 
             "content": content,
 
-            "timestamp": firestore.SERVER_TIMESTAMP
+            "timestamp": firestore.SERVER_TIMESTAMP,
+
+            "created_at": time.time()
         })
 
-    except:
-        pass
+    except Exception as e:
+
+        st.error(f"Save Error: {e}")
 
 # ======================================================
 # LOAD CHAT HISTORY
@@ -275,25 +284,44 @@ def load_chat_history():
 
         chats = db.collection("chat_history") \
             .where("user_id", "==", get_user_id()) \
-            .order_by("timestamp") \
             .stream()
 
-        messages = []
+        temp = []
 
         for chat in chats:
 
             data = chat.to_dict()
 
-            messages.append({
+            temp.append({
 
                 "role": data.get("role", "user"),
 
-                "content": data.get("content", "")
+                "content": data.get("content", ""),
+
+                "created_at": data.get("created_at", 0)
+            })
+
+        # Sort by created_at
+        temp.sort(
+            key=lambda x: x["created_at"]
+        )
+
+        messages = []
+
+        for item in temp:
+
+            messages.append({
+
+                "role": item["role"],
+
+                "content": item["content"]
             })
 
         return messages
 
-    except:
+    except Exception as e:
+
+        st.error(f"History Error: {e}")
 
         return []
 
@@ -301,12 +329,13 @@ def load_chat_history():
 # AUTO LOAD HISTORY
 # ======================================================
 
-if (
-    st.session_state.logged_in
-    and len(st.session_state.messages) == 0
-):
+if st.session_state.logged_in:
 
-    st.session_state.messages = load_chat_history()
+    if not st.session_state.history_loaded:
+
+        st.session_state.messages = load_chat_history()
+
+        st.session_state.history_loaded = True
 
 # ======================================================
 # CLEAR CHAT
@@ -425,6 +454,8 @@ if not st.session_state.logged_in:
 
                 st.session_state.messages = load_chat_history()
 
+                st.session_state.history_loaded = True
+
                 st.success("✅ Login Successful")
 
                 time.sleep(1)
@@ -486,7 +517,7 @@ model_choice = st.sidebar.radio(
 )
 
 # ======================================================
-# SUBJECTS
+# SUBJECT SELECT
 # ======================================================
 
 subject = st.sidebar.selectbox(
@@ -522,71 +553,6 @@ subject = st.sidebar.selectbox(
         "Islamic Studies"
     ]
 )
-
-# ======================================================
-# MCQ GENERATOR
-# ======================================================
-
-if st.sidebar.button(
-    "📝 Generate MCQ",
-    use_container_width=True
-):
-
-    mcq_prompt = f"""
-তুমি একজন {subject} বিষয়ের HSC শিক্ষক।
-
-১০টি গুরুত্বপূর্ণ MCQ তৈরি করো।
-
-প্রতিটির সঠিক উত্তর ও ব্যাখ্যা দাও।
-"""
-
-    with st.spinner("Generating MCQ..."):
-
-        client = genai.Client(
-            api_key=GEMINI_API_KEY
-        )
-
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=mcq_prompt
-        )
-
-        st.markdown("---")
-
-        st.markdown(response.text)
-
-# ======================================================
-# TELEGRAM LOGGER
-# ======================================================
-
-def send_telegram(message):
-
-    if not TELEGRAM_BOT_TOKEN:
-        return
-
-    if not TELEGRAM_CHAT_ID:
-        return
-
-    try:
-
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-
-        requests.post(
-
-            url,
-
-            json={
-
-                "chat_id": TELEGRAM_CHAT_ID,
-
-                "text": message[:1000]
-            },
-
-            timeout=5
-        )
-
-    except:
-        pass
 
 # ======================================================
 # GEMINI FUNCTION
@@ -626,6 +592,64 @@ def call_gemini(prompt_text, image_obj=None):
     except Exception as e:
 
         return f"❌ Gemini Error:\n{str(e)}"
+
+# ======================================================
+# MCQ GENERATOR
+# ======================================================
+
+if st.sidebar.button(
+    "📝 Generate MCQ",
+    use_container_width=True
+):
+
+    mcq_prompt = f"""
+তুমি একজন {subject} বিষয়ের HSC শিক্ষক।
+
+১০টি গুরুত্বপূর্ণ MCQ তৈরি করো।
+
+প্রতিটির সঠিক উত্তর ও ব্যাখ্যা দাও।
+"""
+
+    with st.spinner("Generating MCQ..."):
+
+        response = call_gemini(mcq_prompt)
+
+    st.markdown("---")
+
+    st.markdown(response)
+
+# ======================================================
+# TELEGRAM LOGGER
+# ======================================================
+
+def send_telegram(message):
+
+    if not TELEGRAM_BOT_TOKEN:
+        return
+
+    if not TELEGRAM_CHAT_ID:
+        return
+
+    try:
+
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+
+        requests.post(
+
+            url,
+
+            json={
+
+                "chat_id": TELEGRAM_CHAT_ID,
+
+                "text": message[:1000]
+            },
+
+            timeout=5
+        )
+
+    except:
+        pass
 
 # ======================================================
 # SHOW CHAT HISTORY
@@ -669,16 +693,10 @@ if prompt:
 
     pdf_text = ""
 
-    # FILE HANDLING
+    # FILE PROCESSING
     if uploaded_files and len(uploaded_files) > 0:
 
         uploaded_file = uploaded_files[0]
-
-        if uploaded_file.size > 5 * 1024 * 1024:
-
-            st.error("❌ ফাইল খুব বড়")
-
-            st.stop()
 
         file_name = uploaded_file.name.lower()
 
@@ -852,7 +870,7 @@ PDF CONTENT:
 
             full_response = f"❌ Error:\n{str(e)}"
 
-        # TYPING EFFECT
+        # Typing Effect
         typed = ""
 
         for char in full_response:
