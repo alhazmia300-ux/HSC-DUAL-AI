@@ -8,6 +8,7 @@ import PyPDF2
 import firebase_admin
 import json
 import hashlib
+import uuid
 
 from firebase_admin import credentials
 from firebase_admin import firestore
@@ -21,7 +22,7 @@ from streamlit_cookies_manager import EncryptedCookieManager
 st.set_page_config(
     page_title="🎓 HSC Dual AI Tutor",
     page_icon="🎓",
-    layout="centered"
+    layout="wide"
 )
 
 # ======================================================
@@ -31,37 +32,31 @@ st.set_page_config(
 st.markdown("""
 <style>
 
-/* App Background */
 .stApp {
     background-color: var(--background-color);
 }
 
-/* Chat Bubble */
 [data-testid="stChatMessage"] {
-    border-radius: 16px;
+    border-radius: 18px;
     padding: 14px;
     margin-bottom: 12px;
 }
 
-/* Buttons */
 .stButton > button {
     width: 100%;
     border-radius: 12px;
 }
 
-/* Sidebar */
-section[data-testid="stSidebar"] {
-    border-right: 1px solid rgba(128,128,128,0.15);
-}
-
-/* Input */
 .stTextInput input {
     border-radius: 12px;
 }
 
-/* Chat Input */
 .stChatInputContainer {
     border-top: 1px solid rgba(128,128,128,0.15);
+}
+
+section[data-testid="stSidebar"] {
+    border-right: 1px solid rgba(128,128,128,0.15);
 }
 
 </style>
@@ -73,14 +68,10 @@ section[data-testid="stSidebar"] {
 
 st.title("🎓 HSC Dual AI Tutor")
 
-st.subheader("Gemini + Llama3 দিয়ে HSC প্রস্তুতি")
-
-st.write("প্রশ্ন করো, ছবি/PDF আপলোড করো, MCQ তৈরি করো!")
-
-st.caption("🚀 Created by ALhaz")
+st.caption("🚀 ChatGPT Style AI Tutor")
 
 # ======================================================
-# LOAD SECRETS
+# SECRETS
 # ======================================================
 
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
@@ -88,10 +79,6 @@ GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY")
 
 FIREBASE_API_KEY = st.secrets.get("FIREBASE_API_KEY")
-
-TELEGRAM_BOT_TOKEN = st.secrets.get("TELEGRAM_BOT_TOKEN")
-
-TELEGRAM_CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID")
 
 # ======================================================
 # COOKIES
@@ -130,23 +117,27 @@ db = init_firestore()
 # SESSION STATE
 # ======================================================
 
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+defaults = {
 
-if "user_email" not in st.session_state:
-    st.session_state.user_email = ""
+    "logged_in": False,
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+    "user_email": "",
 
-if "id_token" not in st.session_state:
-    st.session_state.id_token = ""
+    "messages": [],
 
-if "history_loaded" not in st.session_state:
-    st.session_state.history_loaded = False
+    "current_chat_id": None,
+
+    "chat_loaded": False
+}
+
+for key, value in defaults.items():
+
+    if key not in st.session_state:
+
+        st.session_state[key] = value
 
 # ======================================================
-# AUTO LOGIN FROM COOKIE
+# AUTO LOGIN
 # ======================================================
 
 if cookies.get("logged_in") == "true":
@@ -156,7 +147,17 @@ if cookies.get("logged_in") == "true":
     st.session_state.user_email = cookies.get("user_email")
 
 # ======================================================
-# FIREBASE AUTH
+# USER ID
+# ======================================================
+
+def get_user_id():
+
+    return hashlib.md5(
+        st.session_state.user_email.encode()
+    ).hexdigest()
+
+# ======================================================
+# AUTH
 # ======================================================
 
 def signup(email, password):
@@ -169,23 +170,9 @@ def signup(email, password):
         "returnSecureToken": True
     }
 
-    try:
+    r = requests.post(url, json=payload)
 
-        r = requests.post(
-            url,
-            json=payload,
-            timeout=10
-        )
-
-        return r.json()
-
-    except Exception as e:
-
-        return {
-            "error": {
-                "message": str(e)
-            }
-        }
+    return r.json()
 
 def login(email, password):
 
@@ -197,23 +184,9 @@ def login(email, password):
         "returnSecureToken": True
     }
 
-    try:
+    r = requests.post(url, json=payload)
 
-        r = requests.post(
-            url,
-            json=payload,
-            timeout=10
-        )
-
-        return r.json()
-
-    except Exception as e:
-
-        return {
-            "error": {
-                "message": str(e)
-            }
-        }
+    return r.json()
 
 # ======================================================
 # LOGOUT
@@ -222,6 +195,7 @@ def login(email, password):
 def logout():
 
     cookies["logged_in"] = ""
+
     cookies["user_email"] = ""
 
     cookies.save()
@@ -232,129 +206,119 @@ def logout():
 
     st.session_state.messages = []
 
-    st.session_state.history_loaded = False
+    st.session_state.current_chat_id = None
 
 # ======================================================
-# USER ID
+# CHAT DATABASE
 # ======================================================
 
-def get_user_id():
+def create_new_chat():
 
-    email = st.session_state.user_email
+    chat_id = str(uuid.uuid4())
 
-    return hashlib.md5(
-        email.encode()
-    ).hexdigest()
+    title = "New Chat"
 
-# ======================================================
-# SAVE MESSAGE
-# ======================================================
+    db.collection("users") \
+        .document(get_user_id()) \
+        .collection("chats") \
+        .document(chat_id) \
+        .set({
+
+            "title": title,
+
+            "created_at": time.time()
+        })
+
+    st.session_state.current_chat_id = chat_id
+
+    st.session_state.messages = []
 
 def save_message(role, content):
 
-    try:
+    if not st.session_state.current_chat_id:
+        create_new_chat()
 
-        if not content:
-            return
-
-        db.collection("chat_history").add({
-
-            "user_id": get_user_id(),
+    db.collection("users") \
+        .document(get_user_id()) \
+        .collection("chats") \
+        .document(st.session_state.current_chat_id) \
+        .collection("messages") \
+        .add({
 
             "role": role,
 
             "content": content,
 
-            "timestamp": firestore.SERVER_TIMESTAMP,
-
             "created_at": time.time()
         })
 
-    except Exception as e:
+def load_messages(chat_id):
 
-        st.error(f"Save Error: {e}")
+    chats = db.collection("users") \
+        .document(get_user_id()) \
+        .collection("chats") \
+        .document(chat_id) \
+        .collection("messages") \
+        .stream()
 
-# ======================================================
-# LOAD CHAT HISTORY
-# ======================================================
+    temp = []
 
-def load_chat_history():
+    for chat in chats:
 
-    try:
+        data = chat.to_dict()
 
-        chats = db.collection("chat_history") \
-            .where("user_id", "==", get_user_id()) \
-            .stream()
+        temp.append({
 
-        temp = []
+            "role": data.get("role"),
 
-        for chat in chats:
+            "content": data.get("content"),
 
-            data = chat.to_dict()
+            "created_at": data.get("created_at", 0)
+        })
 
-            temp.append({
+    temp.sort(key=lambda x: x["created_at"])
 
-                "role": data.get("role", "user"),
+    final = []
 
-                "content": data.get("content", ""),
+    for item in temp:
 
-                "created_at": data.get("created_at", 0)
-            })
+        final.append({
 
-        # Sort by created_at
-        temp.sort(
-            key=lambda x: x["created_at"]
-        )
+            "role": item["role"],
 
-        messages = []
+            "content": item["content"]
+        })
 
-        for item in temp:
+    return final
 
-            messages.append({
+def get_chat_list():
 
-                "role": item["role"],
+    chats = db.collection("users") \
+        .document(get_user_id()) \
+        .collection("chats") \
+        .stream()
 
-                "content": item["content"]
-            })
+    temp = []
 
-        return messages
+    for chat in chats:
 
-    except Exception as e:
+        data = chat.to_dict()
 
-        st.error(f"History Error: {e}")
+        temp.append({
 
-        return []
+            "chat_id": chat.id,
 
-# ======================================================
-# AUTO LOAD HISTORY
-# ======================================================
+            "title": data.get("title", "Chat"),
 
-if st.session_state.logged_in:
+            "created_at": data.get("created_at", 0)
+        })
 
-    if not st.session_state.history_loaded:
+    temp.sort(
+        key=lambda x: x["created_at"],
+        reverse=True
+    )
 
-        st.session_state.messages = load_chat_history()
-
-        st.session_state.history_loaded = True
-
-# ======================================================
-# CLEAR CHAT
-# ======================================================
-
-def clear_chat_history():
-
-    try:
-
-        chats = db.collection("chat_history") \
-            .where("user_id", "==", get_user_id()) \
-            .stream()
-
-        for chat in chats:
-
-            chat.reference.delete()
-
-    except:
-        pass
+    return temp
 
 # ======================================================
 # LOGIN PAGE
@@ -369,7 +333,7 @@ if not st.session_state.logged_in:
         ["Login", "Sign Up"]
     )
 
-    with st.form("auth_form"):
+    with st.form("auth"):
 
         email = st.text_input("📧 Email")
 
@@ -378,65 +342,28 @@ if not st.session_state.logged_in:
             type="password"
         )
 
-        submit = st.form_submit_button(
-            "Continue"
-        )
+        submit = st.form_submit_button("Continue")
 
     if submit:
 
-        clean_email = email.strip()
-
-        clean_password = password.strip()
-
-        if clean_email == "" or clean_password == "":
-
-            st.warning(
-                "⚠️ Email এবং Password লিখো"
-            )
-
-            st.stop()
-
-        # SIGNUP
         if option == "Sign Up":
 
-            with st.spinner("Creating Account..."):
-
-                result = signup(
-                    clean_email,
-                    clean_password
-                )
+            result = signup(email, password)
 
             if "email" in result:
 
-                st.success(
-                    "✅ Account Created Successfully!"
-                )
-
-                st.info(
-                    "👉 এখন Login করো"
-                )
+                st.success("✅ Account Created")
 
             else:
 
-                err = result.get(
-                    "error",
-                    {}
-                ).get(
-                    "message",
-                    "Signup Failed"
+                st.error(
+                    result.get("error", {})
+                    .get("message")
                 )
 
-                st.error(f"❌ {err}")
-
-        # LOGIN
         else:
 
-            with st.spinner("Logging in..."):
-
-                result = login(
-                    clean_email,
-                    clean_password
-                )
+            result = login(email, password)
 
             if "email" in result:
 
@@ -444,35 +371,20 @@ if not st.session_state.logged_in:
 
                 st.session_state.user_email = result["email"]
 
-                st.session_state.id_token = result["idToken"]
-
                 cookies["logged_in"] = "true"
 
                 cookies["user_email"] = result["email"]
 
                 cookies.save()
 
-                st.session_state.messages = load_chat_history()
-
-                st.session_state.history_loaded = True
-
-                st.success("✅ Login Successful")
-
-                time.sleep(1)
-
                 st.rerun()
 
             else:
 
-                err = result.get(
-                    "error",
-                    {}
-                ).get(
-                    "message",
-                    "Invalid Credentials"
+                st.error(
+                    result.get("error", {})
+                    .get("message")
                 )
-
-                st.error(f"❌ {err}")
 
     st.stop()
 
@@ -481,28 +393,59 @@ if not st.session_state.logged_in:
 # ======================================================
 
 st.sidebar.success(
-    f"👤 {st.session_state.user_email}"
+    st.session_state.user_email
 )
 
-if st.sidebar.button(
-    "🚪 Logout",
-    use_container_width=True
-):
+# ======================================================
+# NEW CHAT
+# ======================================================
+
+if st.sidebar.button("➕ New Chat"):
+
+    create_new_chat()
+
+    st.rerun()
+
+# ======================================================
+# CHAT HISTORY
+# ======================================================
+
+st.sidebar.markdown("## 💬 Chats")
+
+chat_list = get_chat_list()
+
+for chat in chat_list:
+
+    if st.sidebar.button(
+        chat["title"],
+        key=chat["chat_id"]
+    ):
+
+        st.session_state.current_chat_id = chat["chat_id"]
+
+        st.session_state.messages = load_messages(
+            chat["chat_id"]
+        )
+
+        st.rerun()
+
+# ======================================================
+# LOGOUT
+# ======================================================
+
+if st.sidebar.button("🚪 Logout"):
 
     logout()
 
     st.rerun()
 
-if st.sidebar.button(
-    "🗑️ Clear Chat",
-    use_container_width=True
-):
+# ======================================================
+# AUTO CREATE CHAT
+# ======================================================
 
-    clear_chat_history()
+if not st.session_state.current_chat_id:
 
-    st.session_state.messages = []
-
-    st.rerun()
+    create_new_chat()
 
 # ======================================================
 # MODEL SELECT
@@ -511,51 +454,36 @@ if st.sidebar.button(
 model_choice = st.sidebar.radio(
     "🤖 AI Model",
     [
-        "Gemini (Multimodal)",
-        "Llama3 (Text Only)"
+        "Gemini",
+        "Llama3"
     ]
 )
 
 # ======================================================
-# SUBJECT SELECT
+# SUBJECT
 # ======================================================
 
 subject = st.sidebar.selectbox(
-    "📚 বিষয় নির্বাচন করো",
+    "📚 Subject",
     [
-
-        # Science
         "Physics",
         "Chemistry",
         "Biology",
         "Higher Math",
-
-        # Arts
-        "History",
-        "Economics",
-        "Sociology",
-        "Geography",
-
-        # Commerce
-        "Accounting",
-        "Finance",
-        "Management",
-
-        # Mandatory
         "Bangla",
         "English",
         "ICT",
-
-        # Optional
-        "Statistics",
-        "Agriculture",
-        "Psychology",
-        "Islamic Studies"
+        "Economics",
+        "Accounting",
+        "History",
+        "Sociology",
+        "Finance",
+        "Management"
     ]
 )
 
 # ======================================================
-# GEMINI FUNCTION
+# GEMINI
 # ======================================================
 
 def call_gemini(prompt_text, image_obj=None):
@@ -594,65 +522,7 @@ def call_gemini(prompt_text, image_obj=None):
         return f"❌ Gemini Error:\n{str(e)}"
 
 # ======================================================
-# MCQ GENERATOR
-# ======================================================
-
-if st.sidebar.button(
-    "📝 Generate MCQ",
-    use_container_width=True
-):
-
-    mcq_prompt = f"""
-তুমি একজন {subject} বিষয়ের HSC শিক্ষক।
-
-১০টি গুরুত্বপূর্ণ MCQ তৈরি করো।
-
-প্রতিটির সঠিক উত্তর ও ব্যাখ্যা দাও।
-"""
-
-    with st.spinner("Generating MCQ..."):
-
-        response = call_gemini(mcq_prompt)
-
-    st.markdown("---")
-
-    st.markdown(response)
-
-# ======================================================
-# TELEGRAM LOGGER
-# ======================================================
-
-def send_telegram(message):
-
-    if not TELEGRAM_BOT_TOKEN:
-        return
-
-    if not TELEGRAM_CHAT_ID:
-        return
-
-    try:
-
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-
-        requests.post(
-
-            url,
-
-            json={
-
-                "chat_id": TELEGRAM_CHAT_ID,
-
-                "text": message[:1000]
-            },
-
-            timeout=5
-        )
-
-    except:
-        pass
-
-# ======================================================
-# SHOW CHAT HISTORY
+# SHOW MESSAGES
 # ======================================================
 
 for msg in st.session_state.messages:
@@ -680,7 +550,7 @@ prompt = st.chat_input(
 )
 
 # ======================================================
-# MAIN CHAT SYSTEM
+# MAIN CHAT
 # ======================================================
 
 if prompt:
@@ -693,7 +563,7 @@ if prompt:
 
     pdf_text = ""
 
-    # FILE PROCESSING
+    # FILE
     if uploaded_files and len(uploaded_files) > 0:
 
         uploaded_file = uploaded_files[0]
@@ -714,44 +584,34 @@ if prompt:
         # PDF
         elif file_name.endswith(".pdf"):
 
-            try:
+            reader = PyPDF2.PdfReader(
+                uploaded_file
+            )
 
-                reader = PyPDF2.PdfReader(
-                    uploaded_file
-                )
+            for page in reader.pages:
 
-                for page in reader.pages:
+                txt = page.extract_text()
 
-                    text = page.extract_text()
+                if txt:
+                    pdf_text += txt
 
-                    if text:
-                        pdf_text += text
+    # FINAL PROMPT
+    final_prompt = f"""
 
-                st.success(
-                    "✅ PDF Uploaded"
-                )
-
-            except Exception as e:
-
-                st.error(
-                    f"PDF Error: {str(e)}"
-                )
-
-    # PROMPT
-    user_prompt = f"""
 তুমি একজন {subject} বিষয়ের HSC শিক্ষক।
 
 সহজ বাংলায় উত্তর দাও।
 
 প্রশ্ন:
 {user_text}
+
 """
 
     if pdf_text:
 
-        user_prompt += f"""
+        final_prompt += f"""
 
-PDF CONTENT:
+PDF:
 {pdf_text[:12000]}
 """
 
@@ -789,39 +649,44 @@ PDF CONTENT:
         display_text
     )
 
-    send_telegram(display_text)
+    # AUTO CHAT TITLE
+    if len(st.session_state.messages) <= 2:
+
+        short_title = display_text[:30]
+
+        db.collection("users") \
+            .document(get_user_id()) \
+            .collection("chats") \
+            .document(st.session_state.current_chat_id) \
+            .update({
+
+                "title": short_title
+            })
 
     # ASSISTANT
     with st.chat_message("assistant"):
 
-        response_placeholder = st.empty()
+        placeholder = st.empty()
 
         full_response = ""
 
         try:
 
             # GEMINI
-            if model_choice == "Gemini (Multimodal)":
+            if model_choice == "Gemini":
 
                 full_response = call_gemini(
-                    user_prompt,
+                    final_prompt,
                     image_to_send
                 )
 
-            # LLAMA3
+            # LLAMA
             else:
 
                 if image_to_send:
 
                     full_response = (
-                        "⚠️ Llama3 ছবি বুঝতে পারে না। "
-                        "Gemini ব্যবহার করো।"
-                    )
-
-                elif not GROQ_API_KEY:
-
-                    full_response = (
-                        "⚠️ GROQ API KEY নেই"
+                        "⚠️ Llama3 image support করে না"
                     )
 
                 else:
@@ -830,18 +695,16 @@ PDF CONTENT:
                         api_key=GROQ_API_KEY
                     )
 
-                    recent_messages = st.session_state.messages[-10:]
-
                     groq_messages = [
 
                         {
                             "role": "system",
                             "content":
-                            f"You are an HSC {subject} teacher. Answer in Bengali."
+                            f"You are an HSC {subject} teacher."
                         }
                     ]
 
-                    for m in recent_messages:
+                    for m in st.session_state.messages[-10:]:
 
                         groq_messages.append({
 
@@ -854,7 +717,7 @@ PDF CONTENT:
 
                         "role": "user",
 
-                        "content": user_prompt
+                        "content": final_prompt
                     })
 
                     completion = client.chat.completions.create(
@@ -868,18 +731,15 @@ PDF CONTENT:
 
         except Exception as e:
 
-            full_response = f"❌ Error:\n{str(e)}"
+            full_response = str(e)
 
-        # Typing Effect
         typed = ""
 
         for char in full_response:
 
             typed += char
 
-            response_placeholder.markdown(
-                typed
-            )
+            placeholder.markdown(typed)
 
             time.sleep(0.003)
 
