@@ -560,20 +560,14 @@ subject = st.sidebar.selectbox(
 )
 
 # ======================================================
-# FILE UPLOADER
+# CHAT INPUT + FILE UPLOAD
 # ======================================================
 
-uploaded_files = st.file_uploader(
-    "📎 ছবি অথবা PDF আপলোড করো",
-    type=["jpg", "jpeg", "png", "pdf"],
-    accept_multiple_files=False
+prompt = st.chat_input(
+    "প্রশ্ন লেখো অথবা ছবি/PDF আপলোড করো...",
+    accept_file=True,
+    file_type=["jpg", "jpeg", "png", "pdf"]
 )
-
-# ======================================================
-# CHAT INPUT
-# ======================================================
-
-user_text = st.chat_input("প্রশ্ন লেখো...")
 
 # ======================================================
 # GEMINI FUNCTION
@@ -616,7 +610,6 @@ def call_gemini(prompt_text, image_obj=None):
 
             error_text = str(e)
 
-            # 429
             if "429" in error_text:
 
                 return """
@@ -625,7 +618,6 @@ def call_gemini(prompt_text, image_obj=None):
 ⏳ কিছুক্ষণ পরে আবার চেষ্টা করো।
 """
 
-            # 503
             if "503" in error_text or "UNAVAILABLE" in error_text:
 
                 time.sleep(3)
@@ -696,11 +688,21 @@ for msg in st.session_state.messages:
 # MAIN CHAT SYSTEM
 # ======================================================
 
-if user_text or uploaded_files:
+if prompt:
 
     image_to_send = None
 
     pdf_text = ""
+
+    user_text = ""
+
+    uploaded_files = None
+
+    if prompt.text:
+        user_text = prompt.text
+
+    if prompt.files:
+        uploaded_files = prompt.files[0]
 
     # ==================================================
     # FILE PROCESSING
@@ -744,7 +746,7 @@ if user_text or uploaded_files:
 
     # ==================================================
     # FINAL PROMPT
-    # ==================================================
+    # ======================================================
 
     final_prompt = f"""
 
@@ -767,7 +769,7 @@ PDF:
 
     # ==================================================
     # USER MESSAGE
-    # ==================================================
+    # ======================================================
 
     with st.chat_message("user"):
 
@@ -804,7 +806,7 @@ PDF:
 
     # ==================================================
     # AUTO TITLE
-    # ==================================================
+    # ======================================================
 
     if len(st.session_state.messages) <= 2:
 
@@ -821,7 +823,7 @@ PDF:
 
     # ==================================================
     # AI RESPONSE
-    # ==================================================
+    # ======================================================
 
     with st.chat_message("assistant"):
 
@@ -895,7 +897,7 @@ PDF:
 
         # ==================================================
         # TYPING EFFECT
-        # ==================================================
+        # ======================================================
 
         typed = ""
 
