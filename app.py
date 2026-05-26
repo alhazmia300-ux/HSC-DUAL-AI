@@ -395,29 +395,62 @@ if not st.session_state.logged_in:
 st.sidebar.success(st.session_state.user_email)
 
 # ======================================================
-# NEW CHAT (ক্লিন ও ফিক্সড)
+# NEW CHAT
 # ======================================================
 if st.sidebar.button("➕ New Chat", use_container_width=True):
-    # সেশনের মেসেজ খালি করে নতুন চ্যাট শুরু করা
-    st.session_state.messages = []
-    # যদি আপনার কোডে কারেন্ট চ্যাট আইডি ট্র্যাকিং থাকে, তবে তা রিমুভ বা রিসেট করবে
-    if "current_chat_id" in st.session_state:
-        st.session_state.current_chat_id = None
+    create_new_chat()
     st.rerun()
 
 # ======================================================
-# CLEAR HISTORY & LOGOUT
+# CHAT HISTORY (ড্রপডাউন মেনু দিয়ে রিডিজাইন করা)
 # ======================================================
-if st.sidebar.button("🗑️ Clear Chat History", use_container_width=True):
-    clear_chat_history()
-    st.session_state.messages = []
-    st.rerun()
+st.sidebar.markdown("## 💬 Chats History")
 
+chat_list = get_chat_list()
+
+if chat_list:
+    # পুরনো চ্যাটগুলোর টাইটেল ও আইডির একটি ডিকশনারি তৈরি
+    chat_options = {chat["title"]: chat["chat_id"] for chat in chat_list}
+    
+    # বর্তমান চ্যাটটি ড্রপডাউনে ডিফল্ট সিলেক্ট রাখার লজিক
+    default_index = 0
+    if st.session_state.current_chat_id:
+        for i, chat in enumerate(chat_list):
+            if chat["chat_id"] == st.session_state.current_chat_id:
+                default_index = i
+                break
+                
+    # শত শত বাটনের বদলে একটি সুন্দর ড্রপডাউন মেনু
+    selected_chat_title = st.sidebar.selectbox(
+        "Select past chat",
+        options=list(chat_options.keys()),
+        index=default_index,
+        label_visibility="collapsed"
+    )
+    
+    # ইউজার ড্রপডাউন থেকে অন্য চ্যাট সিলেক্ট করলে সেটি লোড হবে
+    selected_chat_id = chat_options[selected_chat_title]
+    if selected_chat_id != st.session_state.current_chat_id:
+        st.session_state.current_chat_id = selected_chat_id
+        st.session_state.messages = load_messages(selected_chat_id)
+        st.rerun()
+else:
+    st.sidebar.caption("No past chats found.")
+
+st.sidebar.markdown("---")
+
+# ======================================================
+# LOGOUT
+# ======================================================
 if st.sidebar.button("🚪 Logout", use_container_width=True):
     logout()
     st.rerun()
 
-st.sidebar.markdown("---")
+# ======================================================
+# AUTO CREATE CHAT
+# ======================================================
+if not st.session_state.current_chat_id:
+    create_new_chat()
 
 # ======================================================
 # MODEL SELECT
