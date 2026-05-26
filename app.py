@@ -241,7 +241,6 @@ def load_chat_history():
         chats = db.collection("chat_history") \
             .where("user_id", "==", get_user_id()) \
             .order_by("timestamp") \
-            .limit(100) \
             .stream()
 
         messages = []
@@ -283,7 +282,7 @@ def clear_chat_history():
         pass
 
 # ======================================================
-# LOGIN PAGE
+# LOGIN / SIGNUP PAGE
 # ======================================================
 
 if not st.session_state.logged_in:
@@ -295,116 +294,114 @@ if not st.session_state.logged_in:
         ["Login", "Sign Up"]
     )
 
-    email = st.text_input("📧 Email")
-
-    password = st.text_input(
-        "🔑 Password",
-        type="password"
-    )
-
     # ==================================================
-    # SIGN UP
+    # FORM FIX
     # ==================================================
 
-    if option == "Sign Up":
+    with st.form("auth_form"):
 
-        if st.button("Create Account"):
+        email = st.text_input("📧 Email")
 
-            clean_email = email.strip()
+        password = st.text_input(
+            "🔑 Password",
+            type="password"
+        )
 
-            clean_password = password.strip()
+        submit = st.form_submit_button(
+            "Continue"
+        )
 
-            if clean_email != "" and clean_password != "":
+    # ==================================================
+    # PROCESS
+    # ==================================================
 
-                with st.spinner("Creating Account..."):
+    if submit:
 
-                    result = signup(
-                        clean_email,
-                        clean_password
-                    )
+        clean_email = email.strip()
 
-                if "email" in result:
+        clean_password = password.strip()
 
-                    st.success(
-                        "✅ Account Created Successfully!"
-                    )
+        if clean_email == "" or clean_password == "":
 
-                    st.info(
-                        "👉 এখন Login করো"
-                    )
+            st.warning(
+                "⚠️ Email এবং Password লিখো"
+            )
 
-                else:
+            st.stop()
 
-                    err = result.get(
-                        "error",
-                        {}
-                    ).get(
-                        "message",
-                        "Signup Failed"
-                    )
+        # ==================================================
+        # SIGNUP
+        # ==================================================
 
-                    st.error(f"❌ {err}")
+        if option == "Sign Up":
+
+            with st.spinner("Creating Account..."):
+
+                result = signup(
+                    clean_email,
+                    clean_password
+                )
+
+            if "email" in result:
+
+                st.success(
+                    "✅ Account Created Successfully!"
+                )
+
+                st.info(
+                    "👉 এখন Login করো"
+                )
 
             else:
 
-                st.warning(
-                    "⚠️ Email এবং Password লিখো"
+                err = result.get(
+                    "error",
+                    {}
+                ).get(
+                    "message",
+                    "Signup Failed"
                 )
 
-    # ==================================================
-    # LOGIN
-    # ==================================================
+                st.error(f"❌ {err}")
 
-    else:
+        # ==================================================
+        # LOGIN
+        # ==================================================
 
-        if st.button("Login"):
+        else:
 
-            clean_email = email.strip()
+            with st.spinner("Logging in..."):
 
-            clean_password = password.strip()
+                result = login(
+                    clean_email,
+                    clean_password
+                )
 
-            if clean_email != "" and clean_password != "":
+            if "email" in result:
 
-                with st.spinner("Logging in..."):
+                st.session_state.logged_in = True
 
-                    result = login(
-                        clean_email,
-                        clean_password
-                    )
+                st.session_state.user_email = result["email"]
 
-                if "email" in result:
+                st.session_state.messages = load_chat_history()
 
-                    st.session_state.logged_in = True
+                st.success("✅ Login Successful")
 
-                    st.session_state.user_email = result["email"]
+                time.sleep(1)
 
-                    old_messages = load_chat_history()
-
-                    st.session_state.messages = old_messages
-
-                    st.success("✅ Login Successful")
-
-                    time.sleep(1)
-
-                    st.rerun()
-
-                else:
-
-                    err = result.get(
-                        "error",
-                        {}
-                    ).get(
-                        "message",
-                        "Invalid Credentials"
-                    )
-
-                    st.error(f"❌ {err}")
+                st.rerun()
 
             else:
 
-                st.warning(
-                    "⚠️ Email এবং Password লিখো"
+                err = result.get(
+                    "error",
+                    {}
+                ).get(
+                    "message",
+                    "Invalid Credentials"
                 )
+
+                st.error(f"❌ {err}")
 
     st.stop()
 
@@ -789,7 +786,6 @@ PDF CONTENT:
                         api_key=GROQ_API_KEY
                     )
 
-                    # RECENT MEMORY
                     recent_messages = st.session_state.messages[-10:]
 
                     groq_messages = [
