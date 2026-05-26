@@ -68,7 +68,11 @@ section[data-testid="stSidebar"] {
 
 st.title("🎓 HSC Dual AI Tutor")
 
-st.caption("🚀 ChatGPT Style AI Tutor")
+st.subheader("Llama3 এবং Gemini-র সমন্বয়ে HSC প্রস্তুতি")
+
+st.write("তোমার HSC পরীক্ষার যেকোনো বিষয়ের প্রশ্ন এখানে জিজ্ঞেস করো!")
+
+st.caption("🚀 Created by ALhaz")
 
 # ======================================================
 # SECRETS
@@ -125,9 +129,7 @@ defaults = {
 
     "messages": [],
 
-    "current_chat_id": None,
-
-    "chat_loaded": False
+    "current_chat_id": None
 }
 
 for key, value in defaults.items():
@@ -157,7 +159,7 @@ def get_user_id():
     ).hexdigest()
 
 # ======================================================
-# AUTH
+# FIREBASE AUTH
 # ======================================================
 
 def signup(email, password):
@@ -216,15 +218,13 @@ def create_new_chat():
 
     chat_id = str(uuid.uuid4())
 
-    title = "New Chat"
-
     db.collection("users") \
         .document(get_user_id()) \
         .collection("chats") \
         .document(chat_id) \
         .set({
 
-            "title": title,
+            "title": "New Chat",
 
             "created_at": time.time()
         })
@@ -460,7 +460,7 @@ model_choice = st.sidebar.radio(
 )
 
 # ======================================================
-# SUBJECT
+# SUBJECT SELECT
 # ======================================================
 
 subject = st.sidebar.selectbox(
@@ -483,46 +483,109 @@ subject = st.sidebar.selectbox(
 )
 
 # ======================================================
-# GEMINI
+# GEMINI FUNCTION
 # ======================================================
 
 def call_gemini(prompt_text, image_obj=None):
 
+    for attempt in range(3):
+
+        try:
+
+            client = genai.Client(
+                api_key=GEMINI_API_KEY
+            )
+
+            # IMAGE INPUT
+            if image_obj:
+
+                response = client.models.generate_content(
+
+                    model="gemini-2.5-flash",
+
+                    contents=[
+                        prompt_text,
+                        image_obj
+                    ]
+                )
+
+            # TEXT INPUT
+            else:
+
+                response = client.models.generate_content(
+
+                    model="gemini-2.5-flash",
+
+                    contents=prompt_text
+                )
+
+            return response.text
+
+        except Exception as e:
+
+            error_text = str(e)
+
+            # Retry if 503
+            if "503" in error_text or "UNAVAILABLE" in error_text:
+
+                time.sleep(3)
+
+                continue
+
+            return f"❌ Gemini Error:\n{error_text}"
+
+    # =====================================================
+    # FALLBACK AFTER 3 FAILED ATTEMPTS
+    # =====================================================
+
+    # IMAGE থাকলে fallback possible না
+    if image_obj:
+
+        return """
+⚠️ Gemini server বর্তমানে খুব busy।
+
+ছবি/PDF বিশ্লেষণের জন্য Gemini প্রয়োজন।
+
+⏳ কিছুক্ষণ পরে আবার চেষ্টা করো।
+"""
+
+    # TEXT হলে fallback
     try:
 
-        client = genai.Client(
-            api_key=GEMINI_API_KEY
+        client = Groq(
+            api_key=GROQ_API_KEY
         )
 
-        if image_obj:
+        completion = client.chat.completions.create(
 
-            response = client.models.generate_content(
+            model="llama-3.3-70b-versatile",
 
-                model="gemini-2.5-flash",
+            messages=[
 
-                contents=[
-                    prompt_text,
-                    image_obj
-                ]
-            )
+                {
+                    "role": "system",
+                    "content":
+                    "You are an expert HSC teacher answering in Bengali."
+                },
 
-        else:
+                {
+                    "role": "user",
+                    "content": prompt_text
+                }
+            ]
+        )
 
-            response = client.models.generate_content(
+        return (
+            "⚠️ Gemini server busy ছিল, তাই Llama3 দিয়ে উত্তর দেওয়া হলো:\n\n"
+            + completion.choices[0].message.content
+        )
 
-                model="gemini-2.5-flash",
+    except Exception as fallback_error:
 
-                contents=prompt_text
-            )
-
-        return response.text
-
-    except Exception as e:
-
-        return f"❌ Gemini Error:\n{str(e)}"
+        return f"❌ Fallback Error:\n{str(fallback_error)}"
 
 # ======================================================
-# SHOW MESSAGES
+# SHOW CHAT HISTORY
 # ======================================================
 
 for msg in st.session_state.messages:
@@ -550,7 +613,7 @@ prompt = st.chat_input(
 )
 
 # ======================================================
-# MAIN CHAT
+# MAIN CHAT SYSTEM
 # ======================================================
 
 if prompt:
@@ -563,7 +626,10 @@ if prompt:
 
     pdf_text = ""
 
-    # FILE
+    # ==================================================
+    # FILE PROCESSING
+    # ==================================================
+
     if uploaded_files and len(uploaded_files) > 0:
 
         uploaded_file = uploaded_files[0]
@@ -595,7 +661,10 @@ if prompt:
                 if txt:
                     pdf_text += txt
 
+    # ==================================================
     # FINAL PROMPT
+    # ==================================================
+
     final_prompt = f"""
 
 তুমি একজন {subject} বিষয়ের HSC শিক্ষক।
@@ -615,7 +684,10 @@ PDF:
 {pdf_text[:12000]}
 """
 
-    # SHOW USER
+    # ==================================================
+    # SHOW USER MESSAGE
+    # ==================================================
+
     with st.chat_message("user"):
 
         if image_to_send:
@@ -649,10 +721,13 @@ PDF:
         display_text
     )
 
+    # ==================================================
     # AUTO CHAT TITLE
+    # ==================================================
+
     if len(st.session_state.messages) <= 2:
 
-        short_title = display_text[:30]
+        short_title = display_text[:35]
 
         db.collection("users") \
             .document(get_user_id()) \
@@ -663,7 +738,10 @@ PDF:
                 "title": short_title
             })
 
-    # ASSISTANT
+    # ==================================================
+    # ASSISTANT RESPONSE
+    # ==================================================
+
     with st.chat_message("assistant"):
 
         placeholder = st.empty()
@@ -680,13 +758,14 @@ PDF:
                     image_to_send
                 )
 
-            # LLAMA
+            # LLAMA3
             else:
 
                 if image_to_send:
 
                     full_response = (
-                        "⚠️ Llama3 image support করে না"
+                        "⚠️ Llama3 ছবি বুঝতে পারে না। "
+                        "Gemini ব্যবহার করো।"
                     )
 
                 else:
@@ -700,7 +779,7 @@ PDF:
                         {
                             "role": "system",
                             "content":
-                            f"You are an HSC {subject} teacher."
+                            f"You are an HSC {subject} teacher answering in Bengali."
                         }
                     ]
 
@@ -732,6 +811,10 @@ PDF:
         except Exception as e:
 
             full_response = str(e)
+
+        # ==================================================
+        # TYPING EFFECT
+        # ==================================================
 
         typed = ""
 
