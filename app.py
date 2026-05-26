@@ -1,253 +1,284 @@
-# ======================================================
-# SEARCH CHAT
-# ======================================================
+import streamlit as st
+from groq import Groq
+from google import genai
+from PIL import Image
+import requests
+import time
+import PyPDF2
+import firebase_admin
+import json
+import hashlib
+import uuid
+import os
 
-search_chat = st.sidebar.text_input(
-    "🔍 Search Chats",
-    placeholder="Search..."
+from firebase_admin import credentials, firestore
+from streamlit_cookies_manager import EncryptedCookieManager
+
+# ======================================================
+# CONFIG
+# ======================================================
+st.set_page_config(page_title="HSC Dual AI Tutor", layout="wide")
+
+# ======================================================
+# COOKIES
+# ======================================================
+cookies = EncryptedCookieManager(
+    prefix="hsc_ai_",
+    password="secure_password_123"
 )
 
+if not cookies.ready():
+    st.stop()
+
 # ======================================================
-# GET CHAT LIST
+# FIREBASE INIT
 # ======================================================
+@st.cache_resource
+def init_db():
+    if not firebase_admin._apps:
+        cred = credentials.Certificate(
+            json.loads(st.secrets["FIREBASE_CREDENTIALS"])
+        )
+        firebase_admin.initialize_app(cred)
+    return firestore.client()
 
-def get_chat_list():
+db = init_db()
 
-    chats = db.collection("users") \
-        .document(get_user_id()) \
-        .collection("chats") \
-        .stream()
+# ======================================================
+# SESSION STATE
+# ======================================================
+for k, v in {
+    "logged_in": False,
+    "email": "",
+    "name": "",
+    "chat_id": None,
+    "messages": []
+}.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
-    temp = []
+# ======================================================
+# AUTO LOGIN
+# ======================================================
+if cookies.get("logged_in") == "true":
+    st.session_state.logged_in = True
+    st.session_state.email = cookies.get("email")
+    st.session_state.name = cookies.get("name")
 
-    for chat in chats:
+# ======================================================
+# USER ID
+# ======================================================
+def uid():
+    return hashlib.md5(st.session_state.email.encode()).hexdigest()
 
-        data = chat.to_dict()
+# ======================================================
+# AUTH (Firebase REST)
+# ======================================================
+FIREBASE_API_KEY = st.secrets["FIREBASE_API_KEY"]
 
-        title = data.get(
-            "title",
-            ""
-        ).strip()
+def signup(email, password):
+    url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_API_KEY}"
+    return requests.post(url, json={
+        "email": email,
+        "password": password,
+        "returnSecureToken": True
+    }).json()
 
-        # Skip Empty Chats
-        if not title:
-            continue
+def login(email, password):
+    url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_API_KEY}"
+    return requests.post(url, json={
+        "email": email,
+        "password": password,
+        "returnSecureToken": True
+    }).json()
 
-        # Skip Untitled
-        if title.lower() in [
-            "new chat",
-            "untitled",
-            "new conversation"
-        ]:
-            continue
+# ======================================================
+# CHAT SYSTEM
+# ======================================================
+def new_chat(title="New Chat"):
+    cid = str(uuid.uuid4())
 
-        temp.append({
+    db.collection("users").document(uid()).collection("chats").document(cid).set({
+        "title": title,
+        "created_at": time.time()
+    })
 
-            "chat_id": chat.id,
+    st.session_state.chat_id = cid
+    st.session_state.messages = []
 
-            "title": title,
+def save(role, content):
+    if not st.session_state.chat_id:
+        return
 
-            "created_at": data.get(
-                "created_at",
-                0
-            )
-        })
+    db.collection("users").document(uid())\
+      .collection("chats").document(st.session_state.chat_id)\
+      .collection("messages").add({
+        "role": role,
+        "content": content,
+        "created_at": time.time()
+      })
 
-    # Latest First
-    temp.sort(
-        key=lambda x: x["created_at"],
+def load_chat(cid):
+    msgs = db.collection("users").document(uid())\
+        .collection("chats").document(cid)\
+        .collection("messages").stream()
+
+    data = []
+    for m in msgs:
+        d = m.to_dict()
+        data.append({"role": d["role"], "content": d["content"]})
+
+    return data
+
+def chat_list():
+    chats = db.collection("users").document(uid()).collection("chats").stream()
+
+    return sorted(
+        [
+            {"id": c.id, **c.to_dict()}
+            for c in chats
+        ],
+        key=lambda x: x.get("created_at", 0),
         reverse=True
     )
 
-    # Search Filter
-    if search_chat:
+# ======================================================
+# LOGOUT
+# ======================================================
+def logout():
+    cookies["logged_in"] = ""
+    cookies.save()
 
-        temp = [
-
-            c for c in temp
-
-            if search_chat.lower()
-            in c["title"].lower()
-        ]
-
-    return temp
+    st.session_state.clear()
+    st.rerun()
 
 # ======================================================
-# RENAME CHAT
+# LOGIN PAGE
 # ======================================================
+if not st.session_state.logged_in:
+    st.title("🎓 Welcome My Friend")
+    st.caption("This platform is created by ALhaz")
 
-def rename_chat(chat_id, new_title):
+    name = st.text_input("Enter your name")
+    email = st.text_input("Enter email / phone number")
+    password = st.text_input("Password", type="password")
 
-    db.collection("users") \
-        .document(get_user_id()) \
-        .collection("chats") \
-        .document(chat_id) \
-        .update({
+    mode = st.selectbox("Choose", ["Login", "Sign Up"])
 
-            "title": new_title
-        })
+    if st.button("Continue"):
+        if not name:
+            st.error("Name required")
+            st.stop()
 
-# ======================================================
-# DELETE SINGLE CHAT
-# ======================================================
+        if mode == "Sign Up":
+            res = signup(email, password)
+        else:
+            res = login(email, password)
 
-def delete_chat(chat_id):
+        if "email" in res:
+            st.session_state.logged_in = True
+            st.session_state.email = email
+            st.session_state.name = name
 
-    # Delete Messages
-    messages = db.collection("users") \
-        .document(get_user_id()) \
-        .collection("chats") \
-        .document(chat_id) \
-        .collection("messages") \
-        .stream()
+            cookies["logged_in"] = "true"
+            cookies["email"] = email
+            cookies["name"] = name
+            cookies.save()
 
-    for msg in messages:
+            new_chat("New Chat")
+            st.rerun()
+        else:
+            st.error(res.get("error", {}).get("message", "Error"))
 
-        msg.reference.delete()
-
-    # Delete Chat Document
-    db.collection("users") \
-        .document(get_user_id()) \
-        .collection("chats") \
-        .document(chat_id) \
-        .delete()
-
-# ======================================================
-# CHAT HISTORY UI
-# ======================================================
-
-st.sidebar.markdown("### 💬 Chats")
-
-chat_list = get_chat_list()
-
-if chat_list:
-
-    for chat in chat_list:
-
-        chat_id = chat["chat_id"]
-
-        title = chat["title"]
-
-        row1, row2, row3 = st.sidebar.columns([6,1,1])
-
-        # ==============================================
-        # OPEN CHAT
-        # ==============================================
-
-        with row1:
-
-            if st.button(
-                f"🗨️ {title}",
-                key=f"open_{chat_id}",
-                use_container_width=True
-            ):
-
-                st.session_state.current_chat_id = chat_id
-
-                st.session_state.messages = load_messages(chat_id)
-
-                st.rerun()
-
-        # ==============================================
-        # RENAME BUTTON
-        # ==============================================
-
-        with row2:
-
-            if st.button(
-                "✏️",
-                key=f"rename_{chat_id}"
-            ):
-
-                st.session_state[
-                    "rename_chat_id"
-                ] = chat_id
-
-        # ==============================================
-        # DELETE BUTTON
-        # ==============================================
-
-        with row3:
-
-            if st.button(
-                "🗑️",
-                key=f"delete_{chat_id}"
-            ):
-
-                delete_chat(chat_id)
-
-                # Current Chat Deleted
-                if (
-                    st.session_state.current_chat_id
-                    == chat_id
-                ):
-
-                    st.session_state.current_chat_id = None
-
-                    st.session_state.messages = []
-
-                st.rerun()
-
-else:
-
-    st.sidebar.info(
-        "No chats found"
-    )
+    st.stop()
 
 # ======================================================
-# RENAME INPUT BOX
+# SIDEBAR UI (compact)
 # ======================================================
+st.sidebar.markdown("## ⚙️ Settings")
 
-if st.session_state.get("rename_chat_id"):
+st.sidebar.markdown(f"👤 **{st.session_state.name}**")
+st.sidebar.markdown(f"📧 {st.session_state.email}")
 
-    rename_id = st.session_state[
-        "rename_chat_id"
-    ]
+model = st.sidebar.radio("AI Model", ["Gemini", "Llama3"])
+subject = st.sidebar.selectbox("Subject", ["Physics","Chemistry","Math","ICT"])
 
-    current_title = ""
+if st.sidebar.button("➕ New Chat"):
+    new_chat("New Chat")
+    st.rerun()
 
-    for c in chat_list:
+search = st.sidebar.text_input("🔍 Search chat")
 
-        if c["chat_id"] == rename_id:
+# chat list
+for c in chat_list():
+    if search.lower() in c["title"].lower():
 
-            current_title = c["title"]
-
-    st.sidebar.markdown("---")
-
-    st.sidebar.markdown("### ✏️ Rename Chat")
-
-    new_title = st.sidebar.text_input(
-        "New Title",
-        value=current_title
-    )
-
-    save_rename = st.sidebar.button(
-        "✅ Save Rename"
-    )
-
-    cancel_rename = st.sidebar.button(
-        "❌ Cancel"
-    )
-
-    if save_rename:
-
-        if new_title.strip():
-
-            rename_chat(
-                rename_id,
-                new_title.strip()
-            )
-
-            st.session_state[
-                "rename_chat_id"
-            ] = None
-
+        if st.sidebar.button(c["title"][:25]):
+            st.session_state.chat_id = c["id"]
+            st.session_state.messages = load_chat(c["id"])
             st.rerun()
 
-    if cancel_rename:
+st.sidebar.button("🚪 Logout", on_click=logout)
 
-        st.session_state[
-            "rename_chat_id"
-        ] = None
+# ======================================================
+# MAIN HEADER (minimal)
+# ======================================================
+st.markdown(
+    f"""
+### Hi {st.session_state.name} 👋
+Ask anything about your studies
+"""
+)
 
+# top-right new chat
+col1, col2 = st.columns([8,1])
+with col2:
+    if st.button("➕"):
+        new_chat("New Chat")
         st.rerun()
+
+# ======================================================
+# LOAD CURRENT CHAT
+# ======================================================
+if st.session_state.chat_id and not st.session_state.messages:
+    st.session_state.messages = load_chat(st.session_state.chat_id)
+
+# ======================================================
+# SHOW CHAT
+# ======================================================
+for m in st.session_state.messages:
+    with st.chat_message(m["role"]):
+        st.markdown(m["content"])
+
+# ======================================================
+# GEMINI
+# ======================================================
+def gemini(prompt):
+    try:
+        client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+        r = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
+        return r.text
+    except:
+        return "Gemini busy. Try again later."
+
+# ======================================================
+# INPUT
+# ======================================================
+msg = st.chat_input("Ask something...")
+
+if msg:
+
+    st.chat_message("user").markdown(msg)
+
+    st.session_state.messages.append({"role":"user","content":msg})
+    save("user", msg)
+
+    with st.chat_message("assistant"):
+        reply = gemini(msg) if model=="Gemini" else "Llama3 response here"
+        st.markdown(reply)
+
+    st.session_state.messages.append({"role":"assistant","content":reply})
+    save("assistant", reply)
