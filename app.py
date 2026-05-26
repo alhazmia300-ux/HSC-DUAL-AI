@@ -79,6 +79,12 @@ st.write("তোমার HSC পরীক্ষার যেকোনো বি
 st.caption("🚀 Created by ALhaz")
 
 # ======================================================
+# HOMEPAGE NEW CHAT BUTTON
+# ======================================================
+
+col1, col2 = st.columns([6,1])
+
+# ======================================================
 # SECRETS
 # ======================================================
 
@@ -152,7 +158,10 @@ if cookies.get("logged_in") == "true":
 
     st.session_state.user_email = cookies.get("user_email")
 
-    st.session_state.current_chat_id = cookies.get("current_chat_id")
+    # App reopen হলে নতুন chat শুরু হবে
+    st.session_state.current_chat_id = None
+
+    st.session_state.messages = []
 
 # ======================================================
 # USER ID
@@ -234,16 +243,12 @@ def create_new_chat():
 
             "title": "New Chat",
 
-            "created_at": time.time()
+            "created_at": firestore.SERVER_TIMESTAMP
         })
 
     st.session_state.current_chat_id = chat_id
 
     st.session_state.messages = []
-
-    cookies["current_chat_id"] = chat_id
-
-    cookies.save()
 
 def save_message(role, content):
 
@@ -261,7 +266,7 @@ def save_message(role, content):
 
             "content": content,
 
-            "created_at": time.time()
+            "created_at": firestore.SERVER_TIMESTAMP
         })
 
 def load_messages(chat_id):
@@ -285,10 +290,12 @@ def load_messages(chat_id):
 
             "content": data.get("content"),
 
-            "created_at": data.get("created_at", 0)
+            "created_at": data.get("created_at")
         })
 
-    temp.sort(key=lambda x: x["created_at"])
+    temp.sort(
+        key=lambda x: str(x["created_at"])
+    )
 
     final = []
 
@@ -303,11 +310,19 @@ def load_messages(chat_id):
 
     return final
 
+# ======================================================
+# GET CHAT LIST
+# ======================================================
+
 def get_chat_list():
 
     chats = db.collection("users") \
         .document(get_user_id()) \
         .collection("chats") \
+        .order_by(
+            "created_at",
+            direction=firestore.Query.DESCENDING
+        ) \
         .stream()
 
     temp = []
@@ -320,15 +335,8 @@ def get_chat_list():
 
             "chat_id": chat.id,
 
-            "title": data.get("title", "Chat"),
-
-            "created_at": data.get("created_at", 0)
+            "title": data.get("title", "New Chat")
         })
-
-    temp.sort(
-        key=lambda x: x["created_at"],
-        reverse=True
-    )
 
     return temp
 
@@ -387,8 +395,6 @@ if not st.session_state.logged_in:
 
                 cookies["user_email"] = result["email"]
 
-                cookies["current_chat_id"] = ""
-
                 cookies.save()
 
                 st.rerun()
@@ -403,13 +409,25 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ======================================================
+# HOMEPAGE NEW CHAT BUTTON
+# ======================================================
+
+with col2:
+
+    if st.button("➕ New Chat"):
+
+        create_new_chat()
+
+        st.rerun()
+
+# ======================================================
 # SIDEBAR
 # ======================================================
 
 st.sidebar.success(st.session_state.user_email)
 
 # ======================================================
-# NEW CHAT
+# SIDEBAR NEW CHAT
 # ======================================================
 
 if st.sidebar.button("➕ New Chat", use_container_width=True):
@@ -430,61 +448,29 @@ try:
 
     if chat_list and isinstance(chat_list, list):
 
-        chat_options = {
+        for chat in chat_list:
 
-            chat["title"]: chat["chat_id"]
+            title = chat["title"]
 
-            for chat in chat_list
+            chat_id = chat["chat_id"]
 
-            if "title" in chat and "chat_id" in chat
-        }
+            if st.sidebar.button(
+                f"💬 {title}",
+                key=chat_id,
+                use_container_width=True
+            ):
 
-        if chat_options:
+                st.session_state.current_chat_id = chat_id
 
-            default_index = 0
-
-            if st.session_state.get("current_chat_id"):
-
-                for i, chat in enumerate(chat_list):
-
-                    if chat.get("chat_id") == st.session_state.current_chat_id:
-
-                        default_index = i
-
-                        break
-
-            selected_chat_title = st.sidebar.selectbox(
-
-                "Select Chat",
-
-                options=list(chat_options.keys()),
-
-                index=default_index,
-
-                label_visibility="collapsed"
-            )
-
-            selected_chat_id = chat_options[selected_chat_title]
-
-            if selected_chat_id != st.session_state.current_chat_id:
-
-                st.session_state.current_chat_id = selected_chat_id
-
-                cookies["current_chat_id"] = selected_chat_id
-
-                cookies.save()
-
-                st.session_state.messages = load_messages(
-                    selected_chat_id
-                )
+                st.session_state.messages = load_messages(chat_id)
 
                 st.rerun()
 
-        else:
+    else:
 
-            st.sidebar.info("কোনো পুরনো চ্যাট পাওয়া যায়নি")
+        st.sidebar.info("কোনো পুরনো চ্যাট পাওয়া যায়নি")
 
-except:
+except Exception as e:
 
     st.sidebar.info("কোনো পুরনো চ্যাট পাওয়া যায়নি")
 
@@ -504,7 +490,7 @@ if st.sidebar.button("🚪 Logout", use_container_width=True):
 # AUTO CREATE CHAT
 # ======================================================
 
-if not st.session_state.get("current_chat_id"):
+if not st.session_state.current_chat_id:
 
     create_new_chat()
 
@@ -610,6 +596,7 @@ def call_gemini(prompt_text, image_obj=None):
 
             error_text = str(e)
 
+            # 429
             if "429" in error_text:
 
                 return """
@@ -618,6 +605,7 @@ def call_gemini(prompt_text, image_obj=None):
 ⏳ কিছুক্ষণ পরে আবার চেষ্টা করো।
 """
 
+            # 503
             if "503" in error_text or "UNAVAILABLE" in error_text:
 
                 time.sleep(3)
