@@ -34,7 +34,7 @@ st.markdown("""
     background-color: var(--background-color);
 }
 
-/* Chat Messages */
+/* Chat Bubble */
 [data-testid="stChatMessage"] {
     border-radius: 16px;
     padding: 14px;
@@ -52,7 +52,7 @@ section[data-testid="stSidebar"] {
     border-right: 1px solid rgba(128,128,128,0.15);
 }
 
-/* Text Input */
+/* Input Box */
 .stTextInput input {
     border-radius: 12px;
 }
@@ -139,9 +139,23 @@ def signup(email, password):
         "returnSecureToken": True
     }
 
-    r = requests.post(url, json=payload)
+    try:
 
-    return r.json()
+        r = requests.post(
+            url,
+            json=payload,
+            timeout=10
+        )
+
+        return r.json()
+
+    except Exception as e:
+
+        return {
+            "error": {
+                "message": str(e)
+            }
+        }
 
 def login(email, password):
 
@@ -153,9 +167,23 @@ def login(email, password):
         "returnSecureToken": True
     }
 
-    r = requests.post(url, json=payload)
+    try:
 
-    return r.json()
+        r = requests.post(
+            url,
+            json=payload,
+            timeout=10
+        )
+
+        return r.json()
+
+    except Exception as e:
+
+        return {
+            "error": {
+                "message": str(e)
+            }
+        }
 
 def logout():
 
@@ -173,10 +201,12 @@ def get_user_id():
 
     email = st.session_state.user_email
 
-    return hashlib.md5(email.encode()).hexdigest()
+    return hashlib.md5(
+        email.encode()
+    ).hexdigest()
 
 # ======================================================
-# SAVE CHAT
+# SAVE MESSAGE
 # ======================================================
 
 def save_message(role, content):
@@ -201,7 +231,7 @@ def save_message(role, content):
         pass
 
 # ======================================================
-# LOAD CHAT
+# LOAD CHAT HISTORY
 # ======================================================
 
 def load_chat_history():
@@ -258,37 +288,40 @@ def clear_chat_history():
 
 if not st.session_state.logged_in:
 
-    st.subheader("🔐 Login Required")
+    st.subheader("🔐 Login / Sign Up")
 
     option = st.selectbox(
         "Choose Option",
         ["Login", "Sign Up"]
     )
 
-    email = st.text_input(
-        "📧 Email",
-        key="auth_email"
-    )
+    email = st.text_input("📧 Email")
 
     password = st.text_input(
         "🔑 Password",
-        type="password",
-        key="auth_pass"
+        type="password"
     )
 
     # ==================================================
-    # SIGNUP
+    # SIGN UP
     # ==================================================
 
     if option == "Sign Up":
 
         if st.button("Create Account"):
 
-            if email.strip() and password.strip():
+            clean_email = email.strip()
+
+            clean_password = password.strip()
+
+            if clean_email != "" and clean_password != "":
 
                 with st.spinner("Creating Account..."):
 
-                    result = signup(email, password)
+                    result = signup(
+                        clean_email,
+                        clean_password
+                    )
 
                 if "email" in result:
 
@@ -315,7 +348,7 @@ if not st.session_state.logged_in:
             else:
 
                 st.warning(
-                    "⚠️ Email & Password লিখো"
+                    "⚠️ Email এবং Password লিখো"
                 )
 
     # ==================================================
@@ -326,11 +359,18 @@ if not st.session_state.logged_in:
 
         if st.button("Login"):
 
-            if email.strip() and password.strip():
+            clean_email = email.strip()
+
+            clean_password = password.strip()
+
+            if clean_email != "" and clean_password != "":
 
                 with st.spinner("Logging in..."):
 
-                    result = login(email, password)
+                    result = login(
+                        clean_email,
+                        clean_password
+                    )
 
                 if "email" in result:
 
@@ -363,7 +403,7 @@ if not st.session_state.logged_in:
             else:
 
                 st.warning(
-                    "⚠️ Email & Password লিখো"
+                    "⚠️ Email এবং Password লিখো"
                 )
 
     st.stop()
@@ -397,7 +437,7 @@ if st.sidebar.button(
     st.rerun()
 
 # ======================================================
-# MODEL
+# MODEL SELECT
 # ======================================================
 
 model_choice = st.sidebar.radio(
@@ -512,7 +552,7 @@ def send_telegram(message):
         pass
 
 # ======================================================
-# GEMINI
+# GEMINI FUNCTION
 # ======================================================
 
 def call_gemini(prompt_text, image_obj=None):
@@ -551,7 +591,7 @@ def call_gemini(prompt_text, image_obj=None):
         return f"❌ Gemini Error:\n{str(e)}"
 
 # ======================================================
-# SHOW CHAT
+# SHOW CHAT HISTORY
 # ======================================================
 
 for msg in st.session_state.messages:
@@ -579,7 +619,7 @@ prompt = st.chat_input(
 )
 
 # ======================================================
-# MAIN CHAT
+# MAIN CHAT SYSTEM
 # ======================================================
 
 if prompt:
@@ -593,7 +633,7 @@ if prompt:
     pdf_text = ""
 
     # ==================================================
-    # FILES
+    # FILE HANDLING
     # ==================================================
 
     if uploaded_files and len(uploaded_files) > 0:
@@ -648,7 +688,7 @@ if prompt:
                 )
 
     # ==================================================
-    # USER PROMPT
+    # PROMPT
     # ==================================================
 
     user_prompt = f"""
@@ -708,7 +748,7 @@ PDF CONTENT:
     send_telegram(display_text)
 
     # ==================================================
-    # ASSISTANT
+    # ASSISTANT RESPONSE
     # ==================================================
 
     with st.chat_message("assistant"):
@@ -727,7 +767,7 @@ PDF CONTENT:
                     image_to_send
                 )
 
-            # LLAMA
+            # LLAMA3
             else:
 
                 if image_to_send:
@@ -749,7 +789,7 @@ PDF CONTENT:
                         api_key=GROQ_API_KEY
                     )
 
-                    # RECENT MEMORY ONLY
+                    # RECENT MEMORY
                     recent_messages = st.session_state.messages[-10:]
 
                     groq_messages = [
