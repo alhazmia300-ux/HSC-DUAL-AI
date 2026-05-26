@@ -12,6 +12,8 @@ import hashlib
 from firebase_admin import credentials
 from firebase_admin import firestore
 
+from streamlit_cookies_manager import EncryptedCookieManager
+
 # ======================================================
 # PAGE CONFIG
 # ======================================================
@@ -92,6 +94,18 @@ TELEGRAM_BOT_TOKEN = st.secrets.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID")
 
 # ======================================================
+# COOKIES
+# ======================================================
+
+cookies = EncryptedCookieManager(
+    prefix="hsc_ai_",
+    password="ALhaz_secure_password"
+)
+
+if not cookies.ready():
+    st.stop()
+
+# ======================================================
 # FIREBASE INIT
 # ======================================================
 
@@ -125,8 +139,21 @@ if "user_email" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+if "id_token" not in st.session_state:
+    st.session_state.id_token = ""
+
 # ======================================================
-# FIREBASE AUTH
+# AUTO LOGIN FROM COOKIE
+# ======================================================
+
+if cookies.get("logged_in") == "true":
+
+    st.session_state.logged_in = True
+
+    st.session_state.user_email = cookies.get("user_email")
+
+# ======================================================
+# FIREBASE INIT
 # ======================================================
 
 def signup(email, password):
@@ -185,7 +212,15 @@ def login(email, password):
             }
         }
 
+# ======================================================
+# LOGOUT
+# ======================================================
+
 def logout():
+
+    cookies["logged_in"] = ""
+    cookies["user_email"] = ""
+    cookies.save()
 
     st.session_state.logged_in = False
 
@@ -263,6 +298,17 @@ def load_chat_history():
         return []
 
 # ======================================================
+# AUTO LOAD HISTORY
+# ======================================================
+
+if (
+    st.session_state.logged_in
+    and len(st.session_state.messages) == 0
+):
+
+    st.session_state.messages = load_chat_history()
+
+# ======================================================
 # CLEAR CHAT
 # ======================================================
 
@@ -282,7 +328,7 @@ def clear_chat_history():
         pass
 
 # ======================================================
-# LOGIN / SIGNUP PAGE
+# LOGIN PAGE
 # ======================================================
 
 if not st.session_state.logged_in:
@@ -293,10 +339,6 @@ if not st.session_state.logged_in:
         "Choose Option",
         ["Login", "Sign Up"]
     )
-
-    # ==================================================
-    # FORM FIX
-    # ==================================================
 
     with st.form("auth_form"):
 
@@ -310,10 +352,6 @@ if not st.session_state.logged_in:
         submit = st.form_submit_button(
             "Continue"
         )
-
-    # ==================================================
-    # PROCESS
-    # ==================================================
 
     if submit:
 
@@ -329,10 +367,7 @@ if not st.session_state.logged_in:
 
             st.stop()
 
-        # ==================================================
         # SIGNUP
-        # ==================================================
-
         if option == "Sign Up":
 
             with st.spinner("Creating Account..."):
@@ -364,10 +399,7 @@ if not st.session_state.logged_in:
 
                 st.error(f"❌ {err}")
 
-        # ==================================================
         # LOGIN
-        # ==================================================
-
         else:
 
             with st.spinner("Logging in..."):
@@ -382,6 +414,14 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
 
                 st.session_state.user_email = result["email"]
+
+                st.session_state.id_token = result["idToken"]
+
+                cookies["logged_in"] = "true"
+
+                cookies["user_email"] = result["email"]
+
+                cookies.save()
 
                 st.session_state.messages = load_chat_history()
 
@@ -629,15 +669,11 @@ if prompt:
 
     pdf_text = ""
 
-    # ==================================================
     # FILE HANDLING
-    # ==================================================
-
     if uploaded_files and len(uploaded_files) > 0:
 
         uploaded_file = uploaded_files[0]
 
-        # FILE SIZE LIMIT
         if uploaded_file.size > 5 * 1024 * 1024:
 
             st.error("❌ ফাইল খুব বড়")
@@ -671,7 +707,6 @@ if prompt:
                     text = page.extract_text()
 
                     if text:
-
                         pdf_text += text
 
                 st.success(
@@ -684,10 +719,7 @@ if prompt:
                     f"PDF Error: {str(e)}"
                 )
 
-    # ==================================================
     # PROMPT
-    # ==================================================
-
     user_prompt = f"""
 তুমি একজন {subject} বিষয়ের HSC শিক্ষক।
 
@@ -705,10 +737,7 @@ PDF CONTENT:
 {pdf_text[:12000]}
 """
 
-    # ==================================================
     # SHOW USER
-    # ==================================================
-
     with st.chat_message("user"):
 
         if image_to_send:
@@ -744,10 +773,7 @@ PDF CONTENT:
 
     send_telegram(display_text)
 
-    # ==================================================
-    # ASSISTANT RESPONSE
-    # ==================================================
-
+    # ASSISTANT
     with st.chat_message("assistant"):
 
         response_placeholder = st.empty()
@@ -826,10 +852,7 @@ PDF CONTENT:
 
             full_response = f"❌ Error:\n{str(e)}"
 
-        # ==================================================
         # TYPING EFFECT
-        # ==================================================
-
         typed = ""
 
         for char in full_response:
