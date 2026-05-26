@@ -40,49 +40,53 @@ st.markdown("""
     background-color: var(--background-color);
 }
 
+/* Chat bubbles */
 [data-testid="stChatMessage"] {
     border-radius: 18px;
     padding: 14px;
     margin-bottom: 12px;
 }
 
+/* Buttons */
 .stButton > button {
     width: 100%;
     border-radius: 12px;
 }
 
+/* Inputs */
 .stTextInput input {
     border-radius: 12px;
 }
 
+/* Chat input */
 .stChatInputContainer {
     border-top: 1px solid rgba(128,128,128,0.15);
 }
 
+/* Sidebar */
 section[data-testid="stSidebar"] {
     border-right: 1px solid rgba(128,128,128,0.15);
 }
 
+/* Premium Login */
+.login-box {
+    text-align:center;
+    padding-top:80px;
+    padding-bottom:40px;
+}
+
+.login-title {
+    font-size:42px;
+    font-weight:700;
+}
+
+.login-sub {
+    font-size:18px;
+    opacity:0.8;
+}
+
 </style>
 """, unsafe_allow_html=True)
-
-# ======================================================
-# HEADER
-# ======================================================
-
-st.title("🎓 HSC Dual AI Tutor")
-
-st.subheader("Llama3 এবং Gemini-র সমন্বয়ে HSC প্রস্তুতি")
-
-st.write("তোমার HSC পরীক্ষার যেকোনো বিষয়ের প্রশ্ন এখানে জিজ্ঞেস করো!")
-
-st.caption("🚀 Created by ALhaz")
-
-# ======================================================
-# HOMEPAGE NEW CHAT BUTTON
-# ======================================================
-
-col1, col2 = st.columns([6,1])
 
 # ======================================================
 # SECRETS
@@ -137,6 +141,8 @@ defaults = {
 
     "user_email": "",
 
+    "user_name": "",
+
     "messages": [],
 
     "current_chat_id": None
@@ -158,10 +164,7 @@ if cookies.get("logged_in") == "true":
 
     st.session_state.user_email = cookies.get("user_email")
 
-    # App reopen হলে নতুন chat শুরু হবে
-    st.session_state.current_chat_id = None
-
-    st.session_state.messages = []
+    st.session_state.user_name = cookies.get("user_name")
 
 # ======================================================
 # USER ID
@@ -215,13 +218,15 @@ def logout():
 
     cookies["user_email"] = ""
 
-    cookies["current_chat_id"] = ""
+    cookies["user_name"] = ""
 
     cookies.save()
 
     st.session_state.logged_in = False
 
     st.session_state.user_email = ""
+
+    st.session_state.user_name = ""
 
     st.session_state.messages = []
 
@@ -276,6 +281,10 @@ def load_messages(chat_id):
         .collection("chats") \
         .document(chat_id) \
         .collection("messages") \
+        .order_by(
+            "created_at",
+            direction=firestore.Query.ASCENDING
+        ) \
         .stream()
 
     temp = []
@@ -288,31 +297,10 @@ def load_messages(chat_id):
 
             "role": data.get("role"),
 
-            "content": data.get("content"),
-
-            "created_at": data.get("created_at")
+            "content": data.get("content")
         })
 
-    temp.sort(
-        key=lambda x: str(x["created_at"])
-    )
-
-    final = []
-
-    for item in temp:
-
-        final.append({
-
-            "role": item["role"],
-
-            "content": item["content"]
-        })
-
-    return final
-
-# ======================================================
-# GET CHAT LIST
-# ======================================================
+    return temp
 
 def get_chat_list():
 
@@ -341,24 +329,65 @@ def get_chat_list():
     return temp
 
 # ======================================================
+# DELETE HISTORY
+# ======================================================
+
+def delete_all_history():
+
+    chats = db.collection("users") \
+        .document(get_user_id()) \
+        .collection("chats") \
+        .stream()
+
+    for chat in chats:
+
+        messages = chat.reference.collection(
+            "messages"
+        ).stream()
+
+        for msg in messages:
+
+            msg.reference.delete()
+
+        chat.reference.delete()
+
+# ======================================================
 # LOGIN PAGE
 # ======================================================
 
 if not st.session_state.logged_in:
 
-    st.subheader("🔐 Login / Sign Up")
+    st.markdown("""
+    <div class="login-box">
+
+    <div class="login-title">
+    Welcome my friend
+    </div>
+
+    <div class="login-sub">
+    This platform is created by ALhaz
+    </div>
+
+    </div>
+    """, unsafe_allow_html=True)
 
     option = st.selectbox(
         "Choose Option",
         ["Login", "Sign Up"]
     )
 
-    with st.form("auth"):
+    with st.form("auth_form"):
 
-        email = st.text_input("📧 Email")
+        name = st.text_input(
+            "👤 Enter your name"
+        )
+
+        email = st.text_input(
+            "📧 Enter email / phone number"
+        )
 
         password = st.text_input(
-            "🔑 Password",
+            "🔑 Enter password",
             type="password"
         )
 
@@ -366,13 +395,51 @@ if not st.session_state.logged_in:
 
     if submit:
 
+        if not email or not password:
+
+            st.warning("সব তথ্য পূরণ করো")
+
+            st.stop()
+
+        # ==================================================
+        # EMAIL VALIDATION
+        # ==================================================
+
+        auth_email = email
+
+        if "@" not in auth_email:
+
+            auth_email = f"{email}@phoneuser.com"
+
+        # ==================================================
+        # SIGNUP
+        # ==================================================
+
         if option == "Sign Up":
 
-            result = signup(email, password)
+            result = signup(
+                auth_email,
+                password
+            )
 
             if "email" in result:
 
-                st.success("✅ Account Created")
+                user_id = hashlib.md5(
+                    auth_email.encode()
+                ).hexdigest()
+
+                db.collection("profiles") \
+                    .document(user_id) \
+                    .set({
+
+                        "name": name,
+
+                        "email_or_phone": email
+                    })
+
+                st.success(
+                    "✅ Account Created"
+                )
 
             else:
 
@@ -381,19 +448,43 @@ if not st.session_state.logged_in:
                     .get("message")
                 )
 
+        # ==================================================
+        # LOGIN
+        # ==================================================
+
         else:
 
-            result = login(email, password)
+            result = login(
+                auth_email,
+                password
+            )
 
             if "email" in result:
 
+                user_id = hashlib.md5(
+                    auth_email.encode()
+                ).hexdigest()
+
+                profile = db.collection("profiles") \
+                    .document(user_id) \
+                    .get()
+
+                profile_data = profile.to_dict()
+
                 st.session_state.logged_in = True
 
-                st.session_state.user_email = result["email"]
+                st.session_state.user_email = auth_email
+
+                st.session_state.user_name = profile_data.get(
+                    "name",
+                    "User"
+                )
 
                 cookies["logged_in"] = "true"
 
-                cookies["user_email"] = result["email"]
+                cookies["user_email"] = auth_email
+
+                cookies["user_name"] = st.session_state.user_name
 
                 cookies.save()
 
@@ -409,14 +500,28 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ======================================================
-# HOMEPAGE NEW CHAT BUTTON
+# MAIN HEADER
 # ======================================================
 
-with col2:
+top1, top2, top3 = st.columns([8,1,1])
 
-    if st.button("➕ New Chat"):
+with top1:
 
-        create_new_chat()
+    st.title("🎓 HSC Dual AI Tutor")
+
+    st.subheader("Llama3 এবং Gemini-র সমন্বয়ে HSC প্রস্তুতি")
+
+    st.write("তোমার HSC পরীক্ষার যেকোনো বিষয়ের প্রশ্ন এখানে জিজ্ঞেস করো!")
+
+    st.caption("🚀 Created by ALhaz")
+
+with top3:
+
+    if st.button("➕", help="New Chat"):
+
+        st.session_state.current_chat_id = None
+
+        st.session_state.messages = []
 
         st.rerun()
 
@@ -424,94 +529,35 @@ with col2:
 # SIDEBAR
 # ======================================================
 
-st.sidebar.success(st.session_state.user_email)
-
-# ======================================================
-# SIDEBAR NEW CHAT
-# ======================================================
-
-if st.sidebar.button("➕ New Chat", use_container_width=True):
-
-    create_new_chat()
-
-    st.rerun()
-
-# ======================================================
-# CHAT HISTORY
-# ======================================================
-
-st.sidebar.markdown("## 💬 Chats History")
-
-try:
-
-    chat_list = get_chat_list()
-
-    if chat_list and isinstance(chat_list, list):
-
-        for chat in chat_list:
-
-            title = chat["title"]
-
-            chat_id = chat["chat_id"]
-
-            if st.sidebar.button(
-                f"💬 {title}",
-                key=chat_id,
-                use_container_width=True
-            ):
-
-                st.session_state.current_chat_id = chat_id
-
-                st.session_state.messages = load_messages(chat_id)
-
-                st.rerun()
-
-    else:
-
-        st.sidebar.info("কোনো পুরনো চ্যাট পাওয়া যায়নি")
-
-except Exception as e:
-
-    st.sidebar.info("কোনো পুরনো চ্যাট পাওয়া যায়নি")
+st.sidebar.markdown("# ⚙️ Settings")
 
 st.sidebar.markdown("---")
 
 # ======================================================
-# LOGOUT
+# PROFILE
 # ======================================================
 
-if st.sidebar.button("🚪 Logout", use_container_width=True):
+st.sidebar.write(
+    f"👤 {st.session_state.user_name}"
+)
 
-    logout()
+st.sidebar.write(
+    f"📧 {st.session_state.user_email}"
+)
 
-    st.rerun()
+profile_pic = st.sidebar.file_uploader(
+    "🖼️ Upload Profile Picture",
+    type=["jpg", "jpeg", "png"]
+)
 
-# ======================================================
-# AUTO CREATE CHAT
-# ======================================================
+if profile_pic:
 
-if not st.session_state.current_chat_id:
+    st.sidebar.image(
+        profile_pic,
+        width=120
+    )
 
-    create_new_chat()
-
-# ======================================================
-# LOAD CURRENT CHAT
-# ======================================================
-
-if (
-    st.session_state.current_chat_id
-    and not st.session_state.messages
-):
-
-    try:
-
-        st.session_state.messages = load_messages(
-            st.session_state.current_chat_id
-        )
-
-    except:
-
-        st.session_state.messages = []
+st.sidebar.markdown("---")
 
 # ======================================================
 # MODEL SELECT
@@ -545,8 +591,116 @@ subject = st.sidebar.selectbox(
     ]
 )
 
+st.sidebar.markdown("---")
+
 # ======================================================
-# CHAT INPUT + FILE UPLOAD
+# NEW CHAT
+# ======================================================
+
+if st.sidebar.button(
+    "➕ New Chat",
+    use_container_width=True
+):
+
+    st.session_state.current_chat_id = None
+
+    st.session_state.messages = []
+
+    st.rerun()
+
+# ======================================================
+# CHAT HISTORY
+# ======================================================
+
+st.sidebar.markdown("## 💬 Chats History")
+
+try:
+
+    chat_list = get_chat_list()
+
+    if chat_list:
+
+        for chat in chat_list:
+
+            title = chat["title"]
+
+            chat_id = chat["chat_id"]
+
+            if st.sidebar.button(
+                f"💬 {title}",
+                key=chat_id,
+                use_container_width=True
+            ):
+
+                st.session_state.current_chat_id = chat_id
+
+                st.session_state.messages = load_messages(
+                    chat_id
+                )
+
+                st.rerun()
+
+    else:
+
+        st.sidebar.info(
+            "কোনো পুরোনো চ্যাট নেই"
+        )
+
+except:
+
+    st.sidebar.info(
+        "কোনো পুরোনো চ্যাট নেই"
+    )
+
+st.sidebar.markdown("---")
+
+# ======================================================
+# LOGOUT + DELETE
+# ======================================================
+
+if st.sidebar.button(
+    "🚪 Logout",
+    use_container_width=True
+):
+
+    logout()
+
+    st.rerun()
+
+if st.sidebar.button(
+    "🗑️ Delete All History",
+    use_container_width=True
+):
+
+    delete_all_history()
+
+    st.session_state.messages = []
+
+    st.session_state.current_chat_id = None
+
+    st.rerun()
+
+# ======================================================
+# LOAD CURRENT CHAT
+# ======================================================
+
+if (
+    st.session_state.current_chat_id
+    and not st.session_state.messages
+):
+
+    try:
+
+        st.session_state.messages = load_messages(
+            st.session_state.current_chat_id
+        )
+
+    except:
+
+        st.session_state.messages = []
+
+# ======================================================
+# CHAT INPUT
 # ======================================================
 
 prompt = st.chat_input(
@@ -556,111 +710,43 @@ prompt = st.chat_input(
 )
 
 # ======================================================
-# GEMINI FUNCTION
+# GEMINI
 # ======================================================
 
 def call_gemini(prompt_text, image_obj=None):
 
-    for attempt in range(3):
-
-        try:
-
-            client = genai.Client(
-                api_key=GEMINI_API_KEY
-            )
-
-            if image_obj:
-
-                response = client.models.generate_content(
-
-                    model="gemini-2.5-flash",
-
-                    contents=[
-                        prompt_text,
-                        image_obj
-                    ]
-                )
-
-            else:
-
-                response = client.models.generate_content(
-
-                    model="gemini-2.5-flash",
-
-                    contents=prompt_text
-                )
-
-            return response.text
-
-        except Exception as e:
-
-            error_text = str(e)
-
-            # 429
-            if "429" in error_text:
-
-                return """
-⚠️ Gemini quota limit শেষ হয়ে গেছে।
-
-⏳ কিছুক্ষণ পরে আবার চেষ্টা করো।
-"""
-
-            # 503
-            if "503" in error_text or "UNAVAILABLE" in error_text:
-
-                time.sleep(3)
-
-                continue
-
-            return f"❌ Gemini Error:\n{error_text}"
-
-    # ==================================================
-    # FALLBACK
-    # ==================================================
-
-    if image_obj:
-
-        return """
-⚠️ Gemini server বর্তমানে খুব busy।
-
-ছবি/PDF বিশ্লেষণের জন্য Gemini প্রয়োজন।
-
-⏳ পরে আবার চেষ্টা করো।
-"""
-
     try:
 
-        client = Groq(
-            api_key=GROQ_API_KEY
+        client = genai.Client(
+            api_key=GEMINI_API_KEY
         )
 
-        completion = client.chat.completions.create(
+        if image_obj:
 
-            model="llama-3.3-70b-versatile",
+            response = client.models.generate_content(
 
-            messages=[
+                model="gemini-2.5-flash",
 
-                {
-                    "role": "system",
-                    "content":
-                    "You are an expert HSC teacher answering in Bengali."
-                },
+                contents=[
+                    prompt_text,
+                    image_obj
+                ]
+            )
 
-                {
-                    "role": "user",
-                    "content": prompt_text
-                }
-            ]
-        )
+        else:
 
-        return (
-            "⚠️ Gemini server busy ছিল, তাই Llama3 দিয়ে উত্তর দেওয়া হলো:\n\n"
-            + completion.choices[0].message.content
-        )
+            response = client.models.generate_content(
 
-    except Exception as fallback_error:
+                model="gemini-2.5-flash",
 
-        return f"❌ Fallback Error:\n{str(fallback_error)}"
+                contents=prompt_text
+            )
+
+        return response.text
+
+    except Exception as e:
+
+        return f"❌ Gemini Error:\n{str(e)}"
 
 # ======================================================
 # SHOW CHAT
@@ -673,10 +759,18 @@ for msg in st.session_state.messages:
         st.markdown(msg["content"])
 
 # ======================================================
-# MAIN CHAT SYSTEM
+# MAIN CHAT
 # ======================================================
 
 if prompt:
+
+    # ==================================================
+    # CREATE CHAT ONLY WHEN USER SENDS MESSAGE
+    # ==================================================
+
+    if not st.session_state.current_chat_id:
+
+        create_new_chat()
 
     image_to_send = None
 
@@ -684,23 +778,24 @@ if prompt:
 
     user_text = ""
 
-    uploaded_files = None
+    uploaded_file = None
 
     if prompt.text:
+
         user_text = prompt.text
 
     if prompt.files:
-        uploaded_files = prompt.files[0]
+
+        uploaded_file = prompt.files[0]
 
     # ==================================================
-    # FILE PROCESSING
+    # IMAGE
     # ==================================================
 
-    if uploaded_files:
+    if uploaded_file:
 
-        file_name = uploaded_files.name.lower()
+        file_name = uploaded_file.name.lower()
 
-        # IMAGE
         if file_name.endswith((
             ".jpg",
             ".jpeg",
@@ -708,16 +803,19 @@ if prompt:
         )):
 
             image_to_send = Image.open(
-                uploaded_files
+                uploaded_file
             )
 
+        # ==================================================
         # PDF
+        # ==================================================
+
         elif file_name.endswith(".pdf"):
 
             try:
 
                 reader = PyPDF2.PdfReader(
-                    uploaded_files
+                    uploaded_file
                 )
 
                 for page in reader.pages:
@@ -730,11 +828,13 @@ if prompt:
 
             except Exception as e:
 
-                st.error(f"PDF Error: {e}")
+                st.error(
+                    f"PDF Error: {e}"
+                )
 
     # ==================================================
     # FINAL PROMPT
-    # ======================================================
+    # ==================================================
 
     final_prompt = f"""
 
@@ -756,8 +856,8 @@ PDF:
 """
 
     # ==================================================
-    # USER MESSAGE
-    # ======================================================
+    # SHOW USER MESSAGE
+    # ==================================================
 
     with st.chat_message("user"):
 
@@ -794,7 +894,7 @@ PDF:
 
     # ==================================================
     # AUTO TITLE
-    # ======================================================
+    # ==================================================
 
     if len(st.session_state.messages) <= 2:
 
@@ -803,7 +903,9 @@ PDF:
         db.collection("users") \
             .document(get_user_id()) \
             .collection("chats") \
-            .document(st.session_state.current_chat_id) \
+            .document(
+                st.session_state.current_chat_id
+            ) \
             .update({
 
                 "title": short_title
@@ -811,7 +913,7 @@ PDF:
 
     # ==================================================
     # AI RESPONSE
-    # ======================================================
+    # ==================================================
 
     with st.chat_message("assistant"):
 
@@ -834,10 +936,11 @@ PDF:
 
                 if image_to_send:
 
-                    full_response = (
-                        "⚠️ Llama3 ছবি বুঝতে পারে না। "
-                        "Gemini ব্যবহার করো।"
-                    )
+                    full_response = """
+⚠️ Llama3 ছবি বুঝতে পারে না।
+
+Gemini ব্যবহার করো।
+"""
 
                 else:
 
@@ -845,39 +948,28 @@ PDF:
                         api_key=GROQ_API_KEY
                     )
 
-                    groq_messages = [
-
-                        {
-                            "role": "system",
-                            "content":
-                            f"You are an HSC {subject} teacher answering in Bengali."
-                        }
-                    ]
-
-                    for m in st.session_state.messages[-10:]:
-
-                        groq_messages.append({
-
-                            "role": m["role"],
-
-                            "content": m["content"]
-                        })
-
-                    groq_messages.append({
-
-                        "role": "user",
-
-                        "content": final_prompt
-                    })
-
                     completion = client.chat.completions.create(
 
                         model="llama-3.3-70b-versatile",
 
-                        messages=groq_messages
+                        messages=[
+
+                            {
+                                "role": "system",
+                                "content":
+                                f"You are an HSC {subject} teacher answering in Bengali."
+                            },
+
+                            {
+                                "role": "user",
+                                "content": final_prompt
+                            }
+                        ]
                     )
 
-                    full_response = completion.choices[0].message.content
+                    full_response = completion \
+                        .choices[0] \
+                        .message.content
 
         except Exception as e:
 
@@ -885,7 +977,7 @@ PDF:
 
         # ==================================================
         # TYPING EFFECT
-        # ======================================================
+        # ==================================================
 
         typed = ""
 
