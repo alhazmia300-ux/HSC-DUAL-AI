@@ -1,3 +1,7 @@
+# ======================================================
+# IMPORTS
+# ======================================================
+
 import streamlit as st
 from groq import Groq
 from google import genai
@@ -148,6 +152,8 @@ if cookies.get("logged_in") == "true":
 
     st.session_state.user_email = cookies.get("user_email")
 
+    st.session_state.current_chat_id = cookies.get("current_chat_id")
+
 # ======================================================
 # USER ID
 # ======================================================
@@ -200,6 +206,8 @@ def logout():
 
     cookies["user_email"] = ""
 
+    cookies["current_chat_id"] = ""
+
     cookies.save()
 
     st.session_state.logged_in = False
@@ -232,6 +240,10 @@ def create_new_chat():
     st.session_state.current_chat_id = chat_id
 
     st.session_state.messages = []
+
+    cookies["current_chat_id"] = chat_id
+
+    cookies.save()
 
 def save_message(role, content):
 
@@ -375,6 +387,8 @@ if not st.session_state.logged_in:
 
                 cookies["user_email"] = result["email"]
 
+                cookies["current_chat_id"] = ""
+
                 cookies.save()
 
                 st.rerun()
@@ -397,68 +411,126 @@ st.sidebar.success(st.session_state.user_email)
 # ======================================================
 # NEW CHAT
 # ======================================================
+
 if st.sidebar.button("➕ New Chat", use_container_width=True):
+
     create_new_chat()
+
     st.rerun()
 
 # ======================================================
-# CHAT HISTORY (বুলেটপ্রুফ ও ১০০% এরর-ফ্রি সংস্করণ)
+# CHAT HISTORY
 # ======================================================
+
 st.sidebar.markdown("## 💬 Chats History")
 
 try:
+
     chat_list = get_chat_list()
-    
-    # চ্যাট লিস্ট যদি ভ্যালিড হয় এবং তাতে ডেটা থাকে
-    if chat_list and isinstance(chat_list, list) and len(chat_list) > 0:
-        chat_options = {chat["title"]: chat["chat_id"] for chat in chat_list if "title" in chat and "chat_id" in chat}
-        
+
+    if chat_list and isinstance(chat_list, list):
+
+        chat_options = {
+
+            chat["title"]: chat["chat_id"]
+
+            for chat in chat_list
+
+            if "title" in chat and "chat_id" in chat
+        }
+
         if chat_options:
+
             default_index = 0
+
             if st.session_state.get("current_chat_id"):
+
                 for i, chat in enumerate(chat_list):
+
                     if chat.get("chat_id") == st.session_state.current_chat_id:
+
                         default_index = i
+
                         break
-            
+
             selected_chat_title = st.sidebar.selectbox(
-                "Select past chat",
+
+                "Select Chat",
+
                 options=list(chat_options.keys()),
+
                 index=default_index,
+
                 label_visibility="collapsed"
             )
-            
+
             selected_chat_id = chat_options[selected_chat_title]
-            if selected_chat_id != st.session_state.get("current_chat_id"):
+
+            if selected_chat_id != st.session_state.current_chat_id:
+
                 st.session_state.current_chat_id = selected_chat_id
-                st.session_state.messages = load_messages(selected_chat_id)
+
+                cookies["current_chat_id"] = selected_chat_id
+
+                cookies.save()
+
+                st.session_state.messages = load_messages(
+                    selected_chat_id
+                )
+
                 st.rerun()
+
         else:
-            st.sidebar.info("কোনো পুরনো চ্যাট পাওয়া যায়নি।")
-    else:
-        st.sidebar.info("কোনো পুরনো চ্যাট পাওয়া যায়নি।")
-except Exception as e:
-    # কোনো কারণে কোড ক্র্যাশ করতে নিলে সিলেক্টবক্স না দেখিয়ে সেটিকে স্কিপ করবে
-    st.sidebar.info("কোনো পুরনো চ্যাট পাওয়া যায়নি।")
+
+            st.sidebar.info("কোনো পুরনো চ্যাট পাওয়া যায়নি")
+
+except:
+
+    st.sidebar.info("কোনো পুরনো চ্যাট পাওয়া যায়নি")
 
 st.sidebar.markdown("---")
 
 # ======================================================
 # LOGOUT
 # ======================================================
+
 if st.sidebar.button("🚪 Logout", use_container_width=True):
+
     logout()
+
     st.rerun()
 
 # ======================================================
 # AUTO CREATE CHAT
 # ======================================================
+
 if not st.session_state.get("current_chat_id"):
+
     create_new_chat()
+
+# ======================================================
+# LOAD CURRENT CHAT
+# ======================================================
+
+if (
+    st.session_state.current_chat_id
+    and not st.session_state.messages
+):
+
+    try:
+
+        st.session_state.messages = load_messages(
+            st.session_state.current_chat_id
+        )
+
+    except:
+
+        st.session_state.messages = []
 
 # ======================================================
 # MODEL SELECT
 # ======================================================
+
 model_choice = st.sidebar.radio(
     "🤖 AI Model",
     ["Gemini", "Llama3"]
@@ -467,14 +539,41 @@ model_choice = st.sidebar.radio(
 # ======================================================
 # SUBJECT SELECT
 # ======================================================
+
 subject = st.sidebar.selectbox(
     "📚 Subject",
     [
-        "Physics", "Chemistry", "Biology", "Higher Math",
-        "Bangla", "English", "ICT", "Economics", 
-        "Accounting", "History", "Sociology", "Finance", "Management"
+        "Physics",
+        "Chemistry",
+        "Biology",
+        "Higher Math",
+        "Bangla",
+        "English",
+        "ICT",
+        "Economics",
+        "Accounting",
+        "History",
+        "Sociology",
+        "Finance",
+        "Management"
     ]
 )
+
+# ======================================================
+# FILE UPLOADER
+# ======================================================
+
+uploaded_files = st.file_uploader(
+    "📎 ছবি অথবা PDF আপলোড করো",
+    type=["jpg", "jpeg", "png", "pdf"],
+    accept_multiple_files=False
+)
+
+# ======================================================
+# CHAT INPUT
+# ======================================================
+
+user_text = st.chat_input("প্রশ্ন লেখো...")
 
 # ======================================================
 # GEMINI FUNCTION
@@ -490,7 +589,6 @@ def call_gemini(prompt_text, image_obj=None):
                 api_key=GEMINI_API_KEY
             )
 
-            # IMAGE INPUT
             if image_obj:
 
                 response = client.models.generate_content(
@@ -503,7 +601,6 @@ def call_gemini(prompt_text, image_obj=None):
                     ]
                 )
 
-            # TEXT INPUT
             else:
 
                 response = client.models.generate_content(
@@ -519,7 +616,16 @@ def call_gemini(prompt_text, image_obj=None):
 
             error_text = str(e)
 
-            # Retry if 503
+            # 429
+            if "429" in error_text:
+
+                return """
+⚠️ Gemini quota limit শেষ হয়ে গেছে।
+
+⏳ কিছুক্ষণ পরে আবার চেষ্টা করো।
+"""
+
+            # 503
             if "503" in error_text or "UNAVAILABLE" in error_text:
 
                 time.sleep(3)
@@ -528,11 +634,10 @@ def call_gemini(prompt_text, image_obj=None):
 
             return f"❌ Gemini Error:\n{error_text}"
 
-    # =====================================================
-    # FALLBACK AFTER 3 FAILED ATTEMPTS
-    # =====================================================
+    # ==================================================
+    # FALLBACK
+    # ==================================================
 
-    # IMAGE থাকলে fallback possible না
     if image_obj:
 
         return """
@@ -540,10 +645,9 @@ def call_gemini(prompt_text, image_obj=None):
 
 ছবি/PDF বিশ্লেষণের জন্য Gemini প্রয়োজন।
 
-⏳ কিছুক্ষণ পরে আবার চেষ্টা করো।
+⏳ পরে আবার চেষ্টা করো।
 """
 
-    # TEXT হলে fallback
     try:
 
         client = Groq(
@@ -579,7 +683,7 @@ def call_gemini(prompt_text, image_obj=None):
         return f"❌ Fallback Error:\n{str(fallback_error)}"
 
 # ======================================================
-# SHOW CHAT HISTORY
+# SHOW CHAT
 # ======================================================
 
 for msg in st.session_state.messages:
@@ -589,32 +693,10 @@ for msg in st.session_state.messages:
         st.markdown(msg["content"])
 
 # ======================================================
-# CHAT INPUT
-# ======================================================
-
-prompt = st.chat_input(
-
-    "প্রশ্ন লেখো অথবা ছবি/PDF আপলোড করো...",
-
-    accept_file=True,
-
-    file_type=[
-        "jpg",
-        "jpeg",
-        "png",
-        "pdf"
-    ]
-)
-
-# ======================================================
 # MAIN CHAT SYSTEM
 # ======================================================
 
-if prompt:
-
-    user_text = prompt.text if prompt.text else ""
-
-    uploaded_files = prompt.files
+if user_text or uploaded_files:
 
     image_to_send = None
 
@@ -624,11 +706,9 @@ if prompt:
     # FILE PROCESSING
     # ==================================================
 
-    if uploaded_files and len(uploaded_files) > 0:
+    if uploaded_files:
 
-        uploaded_file = uploaded_files[0]
-
-        file_name = uploaded_file.name.lower()
+        file_name = uploaded_files.name.lower()
 
         # IMAGE
         if file_name.endswith((
@@ -638,22 +718,29 @@ if prompt:
         )):
 
             image_to_send = Image.open(
-                uploaded_file
+                uploaded_files
             )
 
         # PDF
         elif file_name.endswith(".pdf"):
 
-            reader = PyPDF2.PdfReader(
-                uploaded_file
-            )
+            try:
 
-            for page in reader.pages:
+                reader = PyPDF2.PdfReader(
+                    uploaded_files
+                )
 
-                txt = page.extract_text()
+                for page in reader.pages:
 
-                if txt:
-                    pdf_text += txt
+                    txt = page.extract_text()
+
+                    if txt:
+
+                        pdf_text += txt
+
+            except Exception as e:
+
+                st.error(f"PDF Error: {e}")
 
     # ==================================================
     # FINAL PROMPT
@@ -679,7 +766,7 @@ PDF:
 """
 
     # ==================================================
-    # SHOW USER MESSAGE
+    # USER MESSAGE
     # ==================================================
 
     with st.chat_message("user"):
@@ -716,7 +803,7 @@ PDF:
     )
 
     # ==================================================
-    # AUTO CHAT TITLE
+    # AUTO TITLE
     # ==================================================
 
     if len(st.session_state.messages) <= 2:
@@ -733,7 +820,7 @@ PDF:
             })
 
     # ==================================================
-    # ASSISTANT RESPONSE
+    # AI RESPONSE
     # ==================================================
 
     with st.chat_message("assistant"):
@@ -818,7 +905,7 @@ PDF:
 
             placeholder.markdown(typed)
 
-            time.sleep(0.003)
+            time.sleep(0.001)
 
         st.session_state.messages.append({
 
