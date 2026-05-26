@@ -155,7 +155,9 @@ def login(email, password):
 def logout():
 
     st.session_state.logged_in = False
+
     st.session_state.user_email = ""
+
     st.session_state.messages = []
 
 # ======================================================
@@ -199,20 +201,38 @@ def load_chat_history():
             .where("user_id", "==", get_user_id()) \
             .stream()
 
-        messages = []
+        chat_data = []
 
         for chat in chats:
 
             data = chat.to_dict()
 
+            chat_data.append({
+                "role": data.get("role", "user"),
+                "content": data.get("content", ""),
+                "timestamp": str(data.get("timestamp", ""))
+            })
+
+        # SORT BY TIME
+        chat_data = sorted(
+            chat_data,
+            key=lambda x: x["timestamp"]
+        )
+
+        messages = []
+
+        for item in chat_data:
+
             messages.append({
-                "role": data["role"],
-                "content": data["content"]
+                "role": item["role"],
+                "content": item["content"]
             })
 
         return messages
 
-    except:
+    except Exception as e:
+
+        st.error(f"❌ Load Error: {str(e)}")
 
         return []
 
@@ -272,7 +292,10 @@ if not st.session_state.logged_in:
 
                 st.session_state.user_email = result["email"]
 
-                st.session_state.messages = load_chat_history()
+                # LOAD OLD CHATS
+                old_messages = load_chat_history()
+
+                st.session_state.messages = old_messages
 
                 st.success("✅ Login Successful")
 
