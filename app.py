@@ -40,7 +40,7 @@ st.markdown("""
 <style>
 
 .block-container{
-    padding-top:1rem;
+    padding-top:0.8rem;
 }
 
 section[data-testid="stSidebar"]{
@@ -52,11 +52,15 @@ section[data-testid="stSidebar"]{
     border-radius:14px;
 }
 
+.stTextInput input{
+    border-radius:12px;
+}
+
 .profile-wrap{
     display:flex;
     justify-content:center;
-    margin-top:-10px;
-    margin-bottom:5px;
+    margin-top:-8px;
+    margin-bottom:6px;
 }
 
 .profile-circle{
@@ -65,7 +69,7 @@ section[data-testid="stSidebar"]{
     border-radius:50%;
     overflow:hidden;
     border:4px solid #7C4DFF;
-    box-shadow:0 0 25px rgba(124,77,255,0.75);
+    box-shadow:0 0 25px rgba(124,77,255,0.65);
 }
 
 .profile-circle img{
@@ -78,30 +82,27 @@ section[data-testid="stSidebar"]{
     width:120px;
     height:120px;
     border-radius:50%;
+    background:#161616;
     border:4px solid #7C4DFF;
     display:flex;
     justify-content:center;
     align-items:center;
-    font-size:45px;
+    font-size:42px;
     color:white;
-    background:#161616;
-    box-shadow:0 0 25px rgba(124,77,255,0.75);
+    box-shadow:0 0 25px rgba(124,77,255,0.65);
 }
 
-.small-gap{
-    margin-top:-12px;
-    margin-bottom:-12px;
-}
-
-.chat-btn button{
-    text-align:left !important;
+.chat-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# SECRETS
+# API KEYS
 # =========================================================
 
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
@@ -114,7 +115,7 @@ FIREBASE_API_KEY = st.secrets.get("FIREBASE_API_KEY")
 
 cookies = EncryptedCookieManager(
     prefix="hsc_ai_",
-    password="ALhaz_secure_key"
+    password="ALhaz_secure_password"
 )
 
 if not cookies.ready():
@@ -133,9 +134,13 @@ def init_firestore():
             st.secrets["FIREBASE_CREDENTIALS"]
         )
 
-        cred = credentials.Certificate(firebase_json)
+        cred = credentials.Certificate(
+            firebase_json
+        )
 
-        firebase_admin.initialize_app(cred)
+        firebase_admin.initialize_app(
+            cred
+        )
 
     return firestore.client()
 
@@ -196,7 +201,10 @@ def signup(email, password):
         "returnSecureToken": True
     }
 
-    r = requests.post(url, json=payload)
+    r = requests.post(
+        url,
+        json=payload
+    )
 
     return r.json()
 
@@ -211,7 +219,10 @@ def login(email, password):
         "returnSecureToken": True
     }
 
-    r = requests.post(url, json=payload)
+    r = requests.post(
+        url,
+        json=payload
+    )
 
     return r.json()
 
@@ -239,12 +250,12 @@ def logout():
 
 def save_profile_picture(image):
 
-    buffered = io.BytesIO()
+    buffer = io.BytesIO()
 
-    image.save(buffered, format="PNG")
+    image.save(buffer, format="PNG")
 
     img_str = base64.b64encode(
-        buffered.getvalue()
+        buffer.getvalue()
     ).decode()
 
     db.collection("users_profile") \
@@ -282,23 +293,27 @@ def make_circle_image(img):
 
     img = img.resize((size, size))
 
-    mask = Image.new("L", (size, size), 0)
+    mask = Image.new(
+        "L",
+        (size, size),
+        0
+    )
 
     draw = ImageDraw.Draw(mask)
 
     draw.ellipse(
-        (0, 0, size, size),
+        (0,0,size,size),
         fill=255
     )
 
     output = Image.new(
         "RGBA",
-        (size, size)
+        (size,size)
     )
 
     output.paste(
         img,
-        (0, 0),
+        (0,0),
         mask
     )
 
@@ -368,7 +383,7 @@ def load_messages(chat_id):
 
             "role": data.get("role"),
             "content": data.get("content"),
-            "created_at": data.get("created_at", 0)
+            "created_at": data.get("created_at",0)
 
         })
 
@@ -402,13 +417,13 @@ def get_chat_list():
         temp.append({
 
             "chat_id": chat.id,
-            "title": data.get("title", "Chat"),
-            "created_at": data.get("created_at", 0)
+            "title": data.get("title","Chat"),
+            "created_at": data.get("created_at",0)
 
         })
 
     temp.sort(
-        key=lambda x: x["created_at"],
+        key=lambda x:x["created_at"],
         reverse=True
     )
 
@@ -460,10 +475,10 @@ if not st.session_state.logged_in:
 
     option = st.selectbox(
         "Choose Option",
-        ["Login", "Sign Up"]
+        ["Login","Sign Up"]
     )
 
-    with st.form("auth"):
+    with st.form("auth_form"):
 
         name = st.text_input(
             "Enter your name"
@@ -491,22 +506,30 @@ if not st.session_state.logged_in:
 
         if option == "Sign Up":
 
-            result = signup(email, password)
+            result = signup(
+                email,
+                password
+            )
 
             if "email" in result:
 
-                st.success("Account Created")
+                st.success(
+                    "Account Created Successfully"
+                )
 
             else:
 
                 st.error(
-                    result.get("error", {})
+                    result.get("error",{})
                     .get("message")
                 )
 
         else:
 
-            result = login(email, password)
+            result = login(
+                email,
+                password
+            )
 
             if "email" in result:
 
@@ -525,7 +548,7 @@ if not st.session_state.logged_in:
             else:
 
                 st.error(
-                    result.get("error", {})
+                    result.get("error",{})
                     .get("message")
                 )
 
@@ -573,59 +596,56 @@ with st.sidebar:
 
     if st.session_state.change_pfp:
 
-        with st.expander(
-            "Profile Editor",
-            expanded=True
-        ):
+        uploaded = st.file_uploader(
+            "Upload image",
+            type=["png","jpg","jpeg"]
+        )
 
-            uploaded = st.file_uploader(
-                "Upload image",
-                type=["png","jpg","jpeg"]
+        if uploaded:
+
+            image = Image.open(uploaded)
+
+            cropped = st_cropper(
+                image,
+                realtime_update=True,
+                aspect_ratio=(1,1),
+                box_color="#7C4DFF"
             )
 
-            if uploaded:
+            preview = make_circle_image(
+                cropped
+            )
 
-                image = Image.open(uploaded)
+            st.image(
+                preview,
+                width=150
+            )
 
-                cropped = st_cropper(
-                    image,
-                    realtime_update=True,
-                    aspect_ratio=(1,1),
-                    box_color="#7C4DFF"
-                )
+            col1, col2 = st.columns(2)
 
-                preview = make_circle_image(
-                    cropped
-                )
+            with col1:
 
-                st.image(
-                    preview,
-                    width=150
-                )
+                if st.button("Save"):
 
-                c1, c2 = st.columns(2)
+                    save_profile_picture(
+                        preview
+                    )
 
-                with c1:
+                    st.session_state.change_pfp = False
 
-                    if st.button("Save"):
+                    st.rerun()
 
-                        save_profile_picture(
-                            preview
-                        )
+            with col2:
 
-                        st.session_state.change_pfp = False
+                if st.button("Cancel"):
 
-                        st.rerun()
+                    st.session_state.change_pfp = False
 
-                with c2:
+                    st.rerun()
 
-                    if st.button("Cancel"):
-
-                        st.session_state.change_pfp = False
-
-                        st.rerun()
-
-    st.write(f"👤 {st.session_state.user_name}")
+    st.write(
+        f"👤 {st.session_state.user_name}"
+    )
 
     st.caption(
         st.session_state.user_email
@@ -633,23 +653,33 @@ with st.sidebar:
 
     st.markdown("---")
 
-    model_choice = st.selectbox(
-        "🤖 AI Model",
-        ["Gemini", "Llama3"]
-    )
+    # =========================================
+    # SIDE BY SIDE OPTIONS
+    # =========================================
 
-    subject = st.selectbox(
-        "📚 Subject",
-        [
-            "Physics",
-            "Chemistry",
-            "Biology",
-            "Higher Math",
-            "Bangla",
-            "English",
-            "ICT"
-        ]
-    )
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        model_choice = st.selectbox(
+            "🤖 Model",
+            ["Gemini","Llama3"]
+        )
+
+    with col2:
+
+        subject = st.selectbox(
+            "📚 Subject",
+            [
+                "Physics",
+                "Chemistry",
+                "Biology",
+                "Higher Math",
+                "Bangla",
+                "English",
+                "ICT"
+            ]
+        )
 
     st.markdown("---")
 
@@ -680,13 +710,13 @@ with st.sidebar:
 
     for chat in filtered:
 
-        col1, col2 = st.columns([5,1])
+        chat_col1, chat_col2 = st.columns([8,1])
 
-        with col1:
+        with chat_col1:
 
             if st.button(
-                f"💬 {chat['title']}",
-                key=chat["chat_id"],
+                f"{chat['title']}",
+                key=f"chat_{chat['chat_id']}",
                 use_container_width=True
             ):
 
@@ -698,12 +728,11 @@ with st.sidebar:
 
                 st.rerun()
 
-        with col2:
+        with chat_col2:
 
             if st.button(
-                "🗑",
-                key="delete_"+chat["chat_id"],
-                use_container_width=True
+                "🗑️",
+                key=f"delete_{chat['chat_id']}"
             ):
 
                 delete_chat(chat["chat_id"])
@@ -753,7 +782,7 @@ for msg in st.session_state.messages:
         st.markdown(msg["content"])
 
 # =========================================================
-# GEMINI
+# GEMINI FUNCTION
 # =========================================================
 
 def call_gemini(prompt_text, image_obj=None):
@@ -765,7 +794,9 @@ def call_gemini(prompt_text, image_obj=None):
     if image_obj:
 
         response = client.models.generate_content(
+
             model="gemini-2.5-flash",
+
             contents=[
                 prompt_text,
                 image_obj
@@ -775,7 +806,9 @@ def call_gemini(prompt_text, image_obj=None):
     else:
 
         response = client.models.generate_content(
+
             model="gemini-2.5-flash",
+
             contents=prompt_text
         )
 
@@ -805,15 +838,23 @@ if prompt:
 
     pdf_text = ""
 
+    # =====================================================
+    # FILE PROCESSING
+    # =====================================================
+
     if uploaded_files:
 
         file = uploaded_files[0]
+
+        # IMAGE
 
         if file.name.lower().endswith(
             (".jpg",".jpeg",".png")
         ):
 
             image_to_send = Image.open(file)
+
+        # PDF
 
         elif file.name.lower().endswith(".pdf"):
 
@@ -825,6 +866,10 @@ if prompt:
 
                 if txt:
                     pdf_text += txt
+
+    # =====================================================
+    # FINAL PROMPT
+    # =====================================================
 
     final_prompt = f"""
 
@@ -845,6 +890,10 @@ PDF:
 {pdf_text[:12000]}
 """
 
+    # =====================================================
+    # SHOW USER MESSAGE
+    # =====================================================
+
     with st.chat_message("user"):
 
         if image_to_send:
@@ -860,7 +909,11 @@ PDF:
             else "[📎 File]"
         )
 
-    display_text = user_text if user_text else "[📎 File]"
+    display_text = (
+        user_text
+        if user_text
+        else "[📎 File]"
+    )
 
     st.session_state.messages.append({
 
@@ -874,11 +927,19 @@ PDF:
         display_text
     )
 
+    # =====================================================
+    # ASSISTANT RESPONSE
+    # =====================================================
+
     with st.chat_message("assistant"):
 
         placeholder = st.empty()
 
         try:
+
+            # =============================================
+            # GEMINI
+            # =============================================
 
             if model_choice == "Gemini":
 
@@ -887,12 +948,16 @@ PDF:
                     image_to_send
                 )
 
+            # =============================================
+            # LLAMA3
+            # =============================================
+
             else:
 
                 if image_to_send:
 
                     full_response = (
-                        "⚠️ Llama3 image support করে না।"
+                        "⚠️ Llama3 image support করে না। Gemini ব্যবহার করো।"
                     )
 
                 else:
@@ -928,6 +993,10 @@ PDF:
         except Exception as e:
 
             full_response = str(e)
+
+        # =================================================
+        # TYPING EFFECT
+        # =================================================
 
         typed = ""
 
