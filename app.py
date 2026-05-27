@@ -42,16 +42,10 @@ GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 
 FIREBASE_API_KEY = st.secrets["FIREBASE_API_KEY"]
 
-firebase_json = dict(
-    st.secrets["FIREBASE_CREDENTIALS"]
-)
 
-# ======================================================
-# FIREBASE
-# ======================================================
+firebase_json = st.secrets["FIREBASE_CREDENTIALS"]
 
 db = init_firestore(firebase_json)
-
 # ======================================================
 # COOKIES
 # ======================================================
