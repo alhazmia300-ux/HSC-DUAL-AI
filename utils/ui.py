@@ -1,4 +1,5 @@
- import streamlit as st
+import streamlit as st
+import time
 
 # ======================================================
 # GLOBAL CSS
@@ -6,76 +7,65 @@
 
 def load_css():
 
-    st.markdown("""
+    st.markdown(
+        """
 
-    <style>
+<style>
 
-    .block-container{
-        padding-top:0.8rem;
-    }
+.block-container{
+    padding-top:0.8rem;
+}
 
-    /* Sidebar */
-    section[data-testid="stSidebar"]{
-        width:320px !important;
-    }
+/* Sidebar */
+section[data-testid="stSidebar"]{
+    width:320px !important;
+}
 
-    /* Chat Bubble */
-    [data-testid="stChatMessage"]{
-        border-radius:18px;
-        padding:14px;
-        margin-bottom:10px;
-    }
+/* Chat Bubble */
+[data-testid="stChatMessage"]{
+    border-radius:18px;
+    padding:14px;
+    margin-bottom:10px;
+}
 
-    /* Buttons */
-    .stButton button{
-        border-radius:12px;
-        width:100%;
-    }
+/* Buttons */
+.stButton button{
+    border-radius:12px;
+    width:100%;
+}
 
-    /* Input */
-    .stTextInput input{
-        border-radius:12px;
-    }
+/* Inputs */
+.stTextInput input{
+    border-radius:12px;
+}
 
-    /* Profile */
-    .profile-center{
-        display:flex;
-        justify-content:center;
-        margin-top:5px;
-        margin-bottom:5px;
-    }
+/* Profile */
+.profile-center{
+    display:flex;
+    justify-content:center;
+    margin-top:5px;
+    margin-bottom:5px;
+}
 
-    .profile-circle{
-        width:110px;
-        height:110px;
-        border-radius:50%;
-        overflow:hidden;
-        border:4px solid #7C4DFF;
-        cursor:pointer;
-    }
+.profile-circle{
+    width:110px;
+    height:110px;
+    border-radius:50%;
+    overflow:hidden;
+    border:4px solid #7C4DFF;
+}
 
-    .profile-circle img{
-        width:100%;
-        height:100%;
-        object-fit:cover;
-    }
+.profile-circle img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+}
 
-    /* Sidebar Compact */
-    .sidebar-small-gap{
-        margin-top:-10px;
-    }
+</style>
 
-    /* Top Right Button */
-    .top-btn{
-        position:fixed;
-        top:10px;
-        right:20px;
-        z-index:999;
-    }
-
-    </style>
-
-    """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True
+    )
 
 # ======================================================
 # TYPING EFFECT
@@ -86,8 +76,6 @@ def typing_effect(
     text,
     speed=0.002
 ):
-
-    import time
 
     typed = ""
 
