@@ -19,3 +19,10 @@ def init_firestore(firebase_json_raw):
         except Exception as e:
             st.error(f"Firebase Configuration Error: {e}")
     return firestore.client()
+import hashlib
+
+def get_user_id():
+    import streamlit as st
+    email = st.session_state.user_email if st.session_state.user_email else "guest"
+    return hashlib.md5(email.encode()).hexdigest()
+
