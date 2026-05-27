@@ -1,4 +1,4 @@
- import firebase_admin
+import firebase_admin
 import hashlib
 import time
 import uuid
@@ -14,13 +14,9 @@ def init_firestore(firebase_json):
 
     if not firebase_admin._apps:
 
-        cred = credentials.Certificate(
-            firebase_json
-        )
+        cred = credentials.Certificate(firebase_json)
 
-        firebase_admin.initialize_app(
-            cred
-        )
+        firebase_admin.initialize_app(cred)
 
     return firestore.client()
 
@@ -48,12 +44,11 @@ def create_chat(db, user_id):
         .document(chat_id) \
         .set({
 
-            "title":"New Chat",
+            "title": "New Chat",
 
-            "created_at":time.time(),
+            "created_at": time.time(),
 
-            "updated_at":time.time()
-
+            "updated_at": time.time()
         })
 
     return chat_id
@@ -77,12 +72,11 @@ def save_message(
         .collection("messages") \
         .add({
 
-            "role":role,
+            "role": role,
 
-            "content":content,
+            "content": content,
 
-            "created_at":time.time()
-
+            "created_at": time.time()
         })
 
     db.collection("users") \
@@ -91,8 +85,7 @@ def save_message(
         .document(chat_id) \
         .update({
 
-            "updated_at":time.time()
-
+            "updated_at": time.time()
         })
 
 # ======================================================
@@ -112,8 +105,7 @@ def update_chat_title(
         .document(chat_id) \
         .update({
 
-            "title":title[:40]
-
+            "title": title[:40]
         })
 
 # ======================================================
@@ -141,19 +133,18 @@ def load_messages(
 
         temp.append({
 
-            "role":data.get("role"),
+            "role": data.get("role"),
 
-            "content":data.get("content"),
+            "content": data.get("content"),
 
-            "created_at":data.get(
+            "created_at": data.get(
                 "created_at",
                 0
             )
-
         })
 
     temp.sort(
-        key=lambda x:x["created_at"]
+        key=lambda x: x["created_at"]
     )
 
     return temp
@@ -178,28 +169,27 @@ def get_chat_list(
 
         data = chat.to_dict()
 
-        # empty chat skip
+        # skip empty chat
         if data.get("title") == "New Chat":
             continue
 
         temp.append({
 
-            "chat_id":chat.id,
+            "chat_id": chat.id,
 
-            "title":data.get(
+            "title": data.get(
                 "title",
                 "Chat"
             ),
 
-            "updated_at":data.get(
+            "updated_at": data.get(
                 "updated_at",
                 0
             )
-
         })
 
     temp.sort(
-        key=lambda x:x["updated_at"],
+        key=lambda x: x["updated_at"],
         reverse=True
     )
 
