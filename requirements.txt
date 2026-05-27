@@ -1,10 +1,9 @@
 streamlit
 groq
 google-genai
-pillow
+Pillow
 requests
 PyPDF2
 firebase-admin
 streamlit-cookies-manager
-rembg
-onnxruntime
+streamlit-cropper
