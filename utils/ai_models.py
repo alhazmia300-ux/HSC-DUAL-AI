@@ -1,5 +1,6 @@
- from groq import Groq
+from groq import Groq
 from google import genai
+
 import time
 
 # ======================================================
@@ -20,7 +21,7 @@ def call_gemini(
                 api_key=api_key
             )
 
-            # IMAGE INPUT
+            # IMAGE
             if image:
 
                 response = client.models.generate_content(
@@ -33,7 +34,7 @@ def call_gemini(
                     ]
                 )
 
-            # TEXT INPUT
+            # TEXT
             else:
 
                 response = client.models.generate_content(
@@ -51,8 +52,11 @@ def call_gemini(
 
             # Retry if busy
             if (
+
                 "503" in error_text
+
                 or
+
                 "UNAVAILABLE" in error_text
             ):
 
@@ -87,18 +91,17 @@ def call_llama(
             messages=[
 
                 {
-                    "role":"system",
+                    "role": "system",
 
                     "content":
                     f"You are an expert HSC {subject} teacher answering in Bengali."
                 },
 
                 {
-                    "role":"user",
+                    "role": "user",
 
-                    "content":prompt
+                    "content": prompt
                 }
-
             ]
         )
 
@@ -136,7 +139,7 @@ def smart_ai_response(
 
         return gemini_response
 
-    # Fallback rules
+    # IMAGE fallback impossible
     if image:
 
         return """
@@ -148,13 +151,21 @@ def smart_ai_response(
 ⏳ একটু পরে আবার চেষ্টা করো।
 """
 
-    # Text fallback → Llama3
+    # TEXT fallback → Llama3
+    llama_response = call_llama(
+
+        groq_key,
+
+        prompt,
+
+        subject
+    )
+
     return (
+
         "⚠️ Gemini busy ছিল, তাই Llama3 দিয়ে উত্তর দেওয়া হলো:\n\n"
+
         +
-        call_llama(
-            groq_key,
-            prompt,
-            subject
-        )
+
+        llama_response
     )
