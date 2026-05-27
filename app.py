@@ -48,10 +48,6 @@ section[data-testid="stSidebar"]{
     border-right:1px solid rgba(255,255,255,0.08);
 }
 
-.stChatMessage{
-    border-radius:18px;
-}
-
 .stButton > button{
     border-radius:14px;
 }
@@ -60,16 +56,17 @@ section[data-testid="stSidebar"]{
     display:flex;
     justify-content:center;
     margin-top:-10px;
-    margin-bottom:8px;
+    margin-bottom:5px;
 }
 
 .profile-circle{
-    width:115px;
-    height:115px;
+    width:120px;
+    height:120px;
     border-radius:50%;
     overflow:hidden;
     border:4px solid #7C4DFF;
     box-shadow:0 0 25px rgba(124,77,255,0.75);
+    cursor:pointer;
 }
 
 .profile-circle img{
@@ -79,26 +76,26 @@ section[data-testid="stSidebar"]{
 }
 
 .profile-empty{
-    width:115px;
-    height:115px;
+    width:120px;
+    height:120px;
     border-radius:50%;
     border:4px solid #7C4DFF;
     display:flex;
-    align-items:center;
     justify-content:center;
-    background:#161616;
-    color:white;
+    align-items:center;
     font-size:45px;
+    color:white;
+    background:#161616;
     box-shadow:0 0 25px rgba(124,77,255,0.75);
 }
 
 .small-gap{
-    margin-top:-10px;
-    margin-bottom:-10px;
+    margin-top:-12px;
+    margin-bottom:-12px;
 }
 
-.top-btn button{
-    height:42px;
+.chat-btn button{
+    text-align:left !important;
 }
 
 </style>
@@ -146,7 +143,7 @@ def init_firestore():
 db = init_firestore()
 
 # =========================================================
-# SESSION STATE
+# SESSION STATES
 # =========================================================
 
 defaults = {
@@ -194,6 +191,7 @@ def signup(email, password):
     url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_API_KEY}"
 
     payload = {
+
         "email": email,
         "password": password,
         "returnSecureToken": True
@@ -208,6 +206,7 @@ def login(email, password):
     url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_API_KEY}"
 
     payload = {
+
         "email": email,
         "password": password,
         "returnSecureToken": True
@@ -236,7 +235,7 @@ def logout():
     st.session_state.current_chat_id = None
 
 # =========================================================
-# PROFILE PICTURE SAVE
+# PROFILE FUNCTIONS
 # =========================================================
 
 def save_profile_picture(image):
@@ -257,10 +256,6 @@ def save_profile_picture(image):
 
         }, merge=True)
 
-# =========================================================
-# LOAD PROFILE PIC
-# =========================================================
-
 def load_profile_picture():
 
     try:
@@ -279,10 +274,6 @@ def load_profile_picture():
         pass
 
     return None
-
-# =========================================================
-# CIRCLE IMAGE
-# =========================================================
 
 def make_circle_image(img):
 
@@ -315,14 +306,14 @@ def make_circle_image(img):
     return output
 
 # =========================================================
-# CHAT DATABASE
+# CHAT FUNCTIONS
 # =========================================================
 
 def create_new_chat():
 
-    chat_id = str(uuid.uuid4())
-
-    st.session_state.current_chat_id = chat_id
+    st.session_state.current_chat_id = str(
+        uuid.uuid4()
+    )
 
     st.session_state.messages = []
 
@@ -332,6 +323,7 @@ def save_message(role, content):
         return
 
     if not st.session_state.current_chat_id:
+
         create_new_chat()
 
     chat_ref = db.collection("users") \
@@ -339,7 +331,9 @@ def save_message(role, content):
         .collection("chats") \
         .document(st.session_state.current_chat_id)
 
-    if role == "user" and len(st.session_state.messages) <= 1:
+    existing = chat_ref.get()
+
+    if not existing.exists:
 
         chat_ref.set({
 
@@ -421,6 +415,30 @@ def get_chat_list():
 
     return temp
 
+def delete_chat(chat_id):
+
+    try:
+
+        messages = db.collection("users") \
+            .document(get_user_id()) \
+            .collection("chats") \
+            .document(chat_id) \
+            .collection("messages") \
+            .stream()
+
+        for msg in messages:
+
+            msg.reference.delete()
+
+        db.collection("users") \
+            .document(get_user_id()) \
+            .collection("chats") \
+            .document(chat_id) \
+            .delete()
+
+    except:
+        pass
+
 # =========================================================
 # LOGIN PAGE
 # =========================================================
@@ -478,7 +496,7 @@ if not st.session_state.logged_in:
 
             if "email" in result:
 
-                st.success("Account created")
+                st.success("Account Created")
 
             else:
 
@@ -554,65 +572,65 @@ with st.sidebar:
 
         st.session_state.change_pfp = True
 
-    st.markdown(
-        "<div class='small-gap'></div>",
-        unsafe_allow_html=True
-    )
+    if st.session_state.change_pfp:
+
+        with st.expander(
+            "Profile Editor",
+            expanded=True
+        ):
+
+            uploaded = st.file_uploader(
+                "Upload image",
+                type=["png","jpg","jpeg"]
+            )
+
+            if uploaded:
+
+                image = Image.open(uploaded)
+
+                cropped = st_cropper(
+                    image,
+                    realtime_update=True,
+                    aspect_ratio=(1,1),
+                    box_color="#7C4DFF"
+                )
+
+                preview = make_circle_image(
+                    cropped
+                )
+
+                st.image(
+                    preview,
+                    width=150
+                )
+
+                c1, c2 = st.columns(2)
+
+                with c1:
+
+                    if st.button("Save"):
+
+                        save_profile_picture(
+                            preview
+                        )
+
+                        st.session_state.change_pfp = False
+
+                        st.rerun()
+
+                with c2:
+
+                    if st.button("Cancel"):
+
+                        st.session_state.change_pfp = False
+
+                        st.rerun()
 
     st.write(f"👤 {st.session_state.user_name}")
 
     st.caption(
         st.session_state.user_email
     )
-
-    if st.session_state.change_pfp:
-
-        uploaded = st.file_uploader(
-            "Upload",
-            type=["png", "jpg", "jpeg"]
-        )
-
-        if uploaded:
-
-            image = Image.open(uploaded)
-
-            cropped = st_cropper(
-                image,
-                realtime_update=True,
-                aspect_ratio=(1,1),
-                box_color="#7C4DFF"
-            )
-
-            preview = make_circle_image(
-                cropped
-            )
-
-            st.image(
-                preview,
-                width=140
-            )
-
-            c1, c2 = st.columns(2)
-
-            with c1:
-
-                if st.button("Save"):
-
-                    save_profile_picture(
-                        preview
-                    )
-
-                    st.session_state.change_pfp = False
-
-                    st.rerun()
-
-            with c2:
-
-                if st.button("Cancel"):
-
-                    st.session_state.change_pfp = False
-
-                    st.rerun()
 
     st.markdown("---")
 
@@ -645,24 +663,58 @@ with st.sidebar:
 
         st.rerun()
 
-    st.markdown("### 💬 Chat History")
+    search_query = st.text_input(
+        "🔍 Search chats"
+    )
+
+    st.markdown("### 💬 Chats")
 
     chat_list = get_chat_list()
 
+    filtered = []
+
     for chat in chat_list:
 
-        if st.button(
-            chat["title"],
-            key=chat["chat_id"]
-        ):
+        if search_query.lower() in chat["title"].lower():
 
-            st.session_state.current_chat_id = chat["chat_id"]
+            filtered.append(chat)
 
-            st.session_state.messages = load_messages(
-                chat["chat_id"]
-            )
+    for chat in filtered:
 
-            st.rerun()
+        col1, col2 = st.columns([5,1])
+
+        with col1:
+
+            if st.button(
+                chat["title"],
+                key=chat["chat_id"]
+            ):
+
+                st.session_state.current_chat_id = chat["chat_id"]
+
+                st.session_state.messages = load_messages(
+                    chat["chat_id"]
+                )
+
+                st.rerun()
+
+        with col2:
+
+            if st.button(
+                "🗑",
+                key="del_"+chat["chat_id"]
+            ):
+
+                delete_chat(
+                    chat["chat_id"]
+                )
+
+                if st.session_state.current_chat_id == chat["chat_id"]:
+
+                    st.session_state.current_chat_id = None
+                    st.session_state.messages = []
+
+                st.rerun()
 
     st.markdown("---")
 
@@ -719,7 +771,7 @@ for msg in st.session_state.messages:
         st.markdown(msg["content"])
 
 # =========================================================
-# GEMINI FUNCTION
+# GEMINI
 # =========================================================
 
 def call_gemini(prompt_text, image_obj=None):
@@ -830,8 +882,8 @@ PDF:
 
     st.session_state.messages.append({
 
-        "role": "user",
-        "content": display_text
+        "role":"user",
+        "content":display_text
 
     })
 
