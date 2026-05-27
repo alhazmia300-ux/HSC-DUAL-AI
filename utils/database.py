@@ -14,7 +14,9 @@ def init_firestore(firebase_json):
 
     if not firebase_admin._apps:
 
-        cred = credentials.Certificate(firebase_json)
+        cred = credentials.Certificate(
+    dict(firebase_json)
+)
 
         firebase_admin.initialize_app(cred)
 
