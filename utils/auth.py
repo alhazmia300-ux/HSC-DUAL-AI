@@ -1,4 +1,4 @@
- import requests
+import requests
 
 # ======================================================
 # SIGN UP
@@ -27,8 +27,8 @@ def signup(email, password, api_key):
     except Exception as e:
 
         return {
-            "error":{
-                "message":str(e)
+            "error": {
+                "message": str(e)
             }
         }
 
@@ -59,7 +59,7 @@ def login(email, password, api_key):
     except Exception as e:
 
         return {
-            "error":{
-                "message":str(e)
+            "error": {
+                "message": str(e)
             }
         }
