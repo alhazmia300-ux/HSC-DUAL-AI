@@ -22,11 +22,19 @@ def init_firestore(firebase_json_raw):
 import hashlib
 import streamlit as st
 
-def get_user_id():
-    # কোনো আর্গুমেন্ট ছাড়া সরাসরি সেশন স্টেট রিড করবে
-    email = st.session_state.get("user_email", "guest")
+# ======================================================
+# utils/database.py ফাইলের ২৫ নম্বর লাইনে এটি বসান
+# ======================================================
+def get_user_id(email_input=None):
+    # যদি ব্র্যাকেটের ভেতর ইমেইল পাস করা হয়, তবে সেটি নেবে। না হলে সেশন স্টেট থেকে ট্রাই করবে।
+    if email_input:
+        email = email_input
+    else:
+        email = st.session_state.get("user_email", "guest")
+        
     if not email:
         email = "guest"
+        
     return hashlib.md5(email.encode()).hexdigest()
 
 
