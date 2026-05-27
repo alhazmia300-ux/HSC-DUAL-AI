@@ -1,7 +1,7 @@
 streamlit
 groq
 google-genai
-Pillow
+pillow
 requests
 PyPDF2
 firebase-admin
