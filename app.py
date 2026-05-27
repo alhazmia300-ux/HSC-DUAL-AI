@@ -1,484 +1,139 @@
-# =========================================================
-# IMPORTS
-# =========================================================
-
 import streamlit as st
-from groq import Groq
-from google import genai
-from PIL import Image, ImageDraw
+from PIL import Image
 from streamlit_cropper import st_cropper
-
-import firebase_admin
-from firebase_admin import credentials, firestore
-
 from streamlit_cookies_manager import EncryptedCookieManager
 
-import requests
-import PyPDF2
-import hashlib
 import json
-import uuid
-import io
-import base64
 import time
+import PyPDF2
 
-# =========================================================
+from utils.auth import *
+from utils.database import *
+from utils.ai_models import *
+from utils.profile import *
+from utils.ui import *
+
+# ======================================================
 # PAGE CONFIG
-# =========================================================
+# ======================================================
 
 st.set_page_config(
+
     page_title="🎓 HSC Dual AI Tutor",
+
     page_icon="🎓",
+
     layout="wide"
 )
 
-# =========================================================
-# CUSTOM CSS
-# =========================================================
+# ======================================================
+# CSS
+# ======================================================
 
-st.markdown("""
-<style>
+load_css()
 
-.block-container{
-    padding-top:0.8rem;
-}
-
-section[data-testid="stSidebar"]{
-    width:320px !important;
-    border-right:1px solid rgba(255,255,255,0.08);
-}
-
-.stButton > button{
-    border-radius:14px;
-}
-
-.stTextInput input{
-    border-radius:12px;
-}
-
-.profile-wrap{
-    display:flex;
-    justify-content:center;
-    margin-top:-8px;
-    margin-bottom:6px;
-}
-
-.profile-circle{
-    width:120px;
-    height:120px;
-    border-radius:50%;
-    overflow:hidden;
-    border:4px solid #7C4DFF;
-    box-shadow:0 0 25px rgba(124,77,255,0.65);
-}
-
-.profile-circle img{
-    width:100%;
-    height:100%;
-    object-fit:cover;
-}
-
-.profile-empty{
-    width:120px;
-    height:120px;
-    border-radius:50%;
-    background:#161616;
-    border:4px solid #7C4DFF;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    font-size:42px;
-    color:white;
-    box-shadow:0 0 25px rgba(124,77,255,0.65);
-}
-
-.chat-row{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-# =========================================================
+# ======================================================
 # API KEYS
-# =========================================================
+# ======================================================
 
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
-GROQ_API_KEY = st.secrets.get("GROQ_API_KEY")
-FIREBASE_API_KEY = st.secrets.get("FIREBASE_API_KEY")
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
-# =========================================================
+GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+
+FIREBASE_API_KEY = st.secrets["FIREBASE_API_KEY"]
+
+firebase_json = json.loads(
+    st.secrets["FIREBASE_CREDENTIALS"]
+)
+
+# ======================================================
+# FIREBASE
+# ======================================================
+
+db = init_firestore(firebase_json)
+
+# ======================================================
 # COOKIES
-# =========================================================
+# ======================================================
 
 cookies = EncryptedCookieManager(
+
     prefix="hsc_ai_",
+
     password="ALhaz_secure_password"
 )
 
 if not cookies.ready():
+
     st.stop()
 
-# =========================================================
-# FIREBASE INIT
-# =========================================================
-
-@st.cache_resource
-def init_firestore():
-
-    if not firebase_admin._apps:
-
-        firebase_json = json.loads(
-            st.secrets["FIREBASE_CREDENTIALS"]
-        )
-
-        cred = credentials.Certificate(
-            firebase_json
-        )
-
-        firebase_admin.initialize_app(
-            cred
-        )
-
-    return firestore.client()
-
-db = init_firestore()
-
-# =========================================================
-# SESSION STATES
-# =========================================================
+# ======================================================
+# SESSION STATE
+# ======================================================
 
 defaults = {
 
-    "logged_in": False,
-    "user_email": "",
-    "user_name": "",
-    "messages": [],
-    "current_chat_id": None,
-    "change_pfp": False
+    "logged_in":False,
+
+    "user_email":"",
+
+    "user_name":"",
+
+    "messages":[],
+
+    "current_chat_id":None,
+
+    "profile_pic":None,
+
+    "change_pfp":False
 }
 
-for key, value in defaults.items():
+for k,v in defaults.items():
 
-    if key not in st.session_state:
+    if k not in st.session_state:
 
-        st.session_state[key] = value
+        st.session_state[k] = v
 
-# =========================================================
+# ======================================================
 # AUTO LOGIN
-# =========================================================
+# ======================================================
 
 if cookies.get("logged_in") == "true":
 
     st.session_state.logged_in = True
-    st.session_state.user_email = cookies.get("user_email")
-    st.session_state.user_name = cookies.get("user_name")
 
-# =========================================================
-# USER ID
-# =========================================================
-
-def get_user_id():
-
-    return hashlib.md5(
-        st.session_state.user_email.encode()
-    ).hexdigest()
-
-# =========================================================
-# FIREBASE AUTH
-# =========================================================
-
-def signup(email, password):
-
-    url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_API_KEY}"
-
-    payload = {
-
-        "email": email,
-        "password": password,
-        "returnSecureToken": True
-    }
-
-    r = requests.post(
-        url,
-        json=payload
+    st.session_state.user_email = cookies.get(
+        "user_email"
     )
 
-    return r.json()
-
-def login(email, password):
-
-    url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_API_KEY}"
-
-    payload = {
-
-        "email": email,
-        "password": password,
-        "returnSecureToken": True
-    }
-
-    r = requests.post(
-        url,
-        json=payload
+    st.session_state.user_name = cookies.get(
+        "user_name"
     )
 
-    return r.json()
-
-# =========================================================
-# LOGOUT
-# =========================================================
-
-def logout():
-
-    cookies["logged_in"] = ""
-    cookies["user_email"] = ""
-    cookies["user_name"] = ""
-
-    cookies.save()
-
-    st.session_state.logged_in = False
-    st.session_state.user_email = ""
-    st.session_state.user_name = ""
-    st.session_state.messages = []
-    st.session_state.current_chat_id = None
-
-# =========================================================
-# PROFILE FUNCTIONS
-# =========================================================
-
-def save_profile_picture(image):
-
-    buffer = io.BytesIO()
-
-    image.save(buffer, format="PNG")
-
-    img_str = base64.b64encode(
-        buffer.getvalue()
-    ).decode()
-
-    db.collection("users_profile") \
-        .document(get_user_id()) \
-        .set({
-
-            "profile_picture": img_str
-
-        }, merge=True)
-
-def load_profile_picture():
-
-    try:
-
-        doc = db.collection("users_profile") \
-            .document(get_user_id()) \
-            .get()
-
-        if doc.exists:
-
-            return doc.to_dict().get(
-                "profile_picture"
-            )
-
-    except:
-        pass
-
-    return None
-
-def make_circle_image(img):
-
-    img = img.convert("RGBA")
-
-    size = min(img.size)
-
-    img = img.resize((size, size))
-
-    mask = Image.new(
-        "L",
-        (size, size),
-        0
+    st.session_state.profile_pic = cookies.get(
+        "profile_pic"
     )
 
-    draw = ImageDraw.Draw(mask)
-
-    draw.ellipse(
-        (0,0,size,size),
-        fill=255
-    )
-
-    output = Image.new(
-        "RGBA",
-        (size,size)
-    )
-
-    output.paste(
-        img,
-        (0,0),
-        mask
-    )
-
-    return output
-
-# =========================================================
-# CHAT FUNCTIONS
-# =========================================================
-
-def create_new_chat():
-
-    st.session_state.current_chat_id = str(
-        uuid.uuid4()
-    )
-
-    st.session_state.messages = []
-
-def save_message(role, content):
-
-    if not content.strip():
-        return
-
-    if not st.session_state.current_chat_id:
-
-        create_new_chat()
-
-    chat_ref = db.collection("users") \
-        .document(get_user_id()) \
-        .collection("chats") \
-        .document(st.session_state.current_chat_id)
-
-    existing = chat_ref.get()
-
-    if not existing.exists:
-
-        chat_ref.set({
-
-            "title": content[:40],
-            "created_at": time.time()
-
-        })
-
-    chat_ref.collection("messages").add({
-
-        "role": role,
-        "content": content,
-        "created_at": time.time()
-
-    })
-
-def load_messages(chat_id):
-
-    chats = db.collection("users") \
-        .document(get_user_id()) \
-        .collection("chats") \
-        .document(chat_id) \
-        .collection("messages") \
-        .stream()
-
-    temp = []
-
-    for chat in chats:
-
-        data = chat.to_dict()
-
-        temp.append({
-
-            "role": data.get("role"),
-            "content": data.get("content"),
-            "created_at": data.get("created_at",0)
-
-        })
-
-    temp.sort(
-        key=lambda x: x["created_at"]
-    )
-
-    return [
-
-        {
-            "role": x["role"],
-            "content": x["content"]
-        }
-
-        for x in temp
-    ]
-
-def get_chat_list():
-
-    chats = db.collection("users") \
-        .document(get_user_id()) \
-        .collection("chats") \
-        .stream()
-
-    temp = []
-
-    for chat in chats:
-
-        data = chat.to_dict()
-
-        temp.append({
-
-            "chat_id": chat.id,
-            "title": data.get("title","Chat"),
-            "created_at": data.get("created_at",0)
-
-        })
-
-    temp.sort(
-        key=lambda x:x["created_at"],
-        reverse=True
-    )
-
-    return temp
-
-def delete_chat(chat_id):
-
-    try:
-
-        messages = db.collection("users") \
-            .document(get_user_id()) \
-            .collection("chats") \
-            .document(chat_id) \
-            .collection("messages") \
-            .stream()
-
-        for msg in messages:
-
-            msg.reference.delete()
-
-        db.collection("users") \
-            .document(get_user_id()) \
-            .collection("chats") \
-            .document(chat_id) \
-            .delete()
-
-    except:
-        pass
-
-# =========================================================
+# ======================================================
 # LOGIN PAGE
-# =========================================================
+# ======================================================
 
 if not st.session_state.logged_in:
 
-    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.title("Welcome my friend")
 
-    st.markdown(
-        "<h1 style='text-align:center;'>Welcome my friend</h1>",
-        unsafe_allow_html=True
+    st.caption(
+        "This platform is created by ALhaz"
     )
-
-    st.markdown(
-        "<p style='text-align:center;'>This platform is created by ALhaz</p>",
-        unsafe_allow_html=True
-    )
-
-    st.markdown("<br>", unsafe_allow_html=True)
 
     option = st.selectbox(
+
         "Choose Option",
+
         ["Login","Sign Up"]
     )
 
-    with st.form("auth_form"):
+    with st.form("auth"):
 
         name = st.text_input(
             "Enter your name"
@@ -489,7 +144,9 @@ if not st.session_state.logged_in:
         )
 
         password = st.text_input(
+
             "Password",
+
             type="password"
         )
 
@@ -501,44 +158,62 @@ if not st.session_state.logged_in:
 
         if not name.strip():
 
-            st.error("Name required")
+            st.error(
+                "Name required"
+            )
+
             st.stop()
 
         if option == "Sign Up":
 
             result = signup(
+
                 email,
-                password
+
+                password,
+
+                FIREBASE_API_KEY
             )
 
             if "email" in result:
 
                 st.success(
-                    "Account Created Successfully"
+                    "Account Created"
                 )
 
             else:
 
                 st.error(
-                    result.get("error",{})
-                    .get("message")
+
+                    result.get(
+                        "error",
+                        {}
+                    ).get("message")
                 )
 
         else:
 
             result = login(
+
                 email,
-                password
+
+                password,
+
+                FIREBASE_API_KEY
             )
 
             if "email" in result:
 
                 st.session_state.logged_in = True
+
                 st.session_state.user_email = result["email"]
+
                 st.session_state.user_name = name
 
                 cookies["logged_in"] = "true"
+
                 cookies["user_email"] = result["email"]
+
                 cookies["user_name"] = name
 
                 cookies.save()
@@ -548,103 +223,166 @@ if not st.session_state.logged_in:
             else:
 
                 st.error(
-                    result.get("error",{})
-                    .get("message")
+
+                    result.get(
+                        "error",
+                        {}
+                    ).get("message")
                 )
 
     st.stop()
 
-# =========================================================
+# ======================================================
+# USER ID
+# ======================================================
+
+USER_ID = get_user_id(
+    st.session_state.user_email
+)
+
+# ======================================================
+# HEADER
+# ======================================================
+
+st.title("🎓 HSC Dual AI Tutor")
+
+st.subheader(
+    "Llama3 এবং Gemini-র সমন্বয়ে HSC প্রস্তুতি"
+)
+
+st.caption("🚀 Created by ALhaz")
+# ======================================================
 # SIDEBAR
-# =========================================================
+# ======================================================
 
 with st.sidebar:
 
     st.markdown("## ⚙️ Settings")
 
-    profile_picture = load_profile_picture()
+    # ==================================================
+    # PROFILE SECTION
+    # ==================================================
 
-    if profile_picture:
+    st.markdown(
+        '<div class="profile-center">',
+        unsafe_allow_html=True
+    )
+
+    # Profile image exists
+    if st.session_state.profile_pic:
 
         st.markdown(
+
             f"""
-            <div class="profile-wrap">
-                <div class="profile-circle">
-                    <img src="data:image/png;base64,{profile_picture}">
-                </div>
+
+            <div class="profile-circle">
+
+            <img src="data:image/png;base64,{st.session_state.profile_pic}">
+
             </div>
+
             """,
+
             unsafe_allow_html=True
         )
 
+    # Default empty circle
     else:
 
-        st.markdown("""
-        <div class="profile-wrap">
-            <div class="profile-empty">
-                +
+        st.markdown(
+
+            """
+
+            <div class="profile-circle">
+
+            <img src="https://cdn-icons-png.flaticon.com/512/149/149071.png">
+
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+
+            """,
+
+            unsafe_allow_html=True
+        )
+
+    st.markdown(
+        "</div>",
+        unsafe_allow_html=True
+    )
+
+    # ==================================================
+    # CHANGE PROFILE BUTTON
+    # ==================================================
 
     if st.button(
-        "📸 Change Profile Picture",
-        use_container_width=True
+        "Change Profile Picture"
     ):
 
         st.session_state.change_pfp = True
 
+    # ==================================================
+    # PROFILE UPLOAD + CROPPER
+    # ==================================================
+
     if st.session_state.change_pfp:
 
-        uploaded = st.file_uploader(
-            "Upload image",
-            type=["png","jpg","jpeg"]
+        uploaded_pfp = st.file_uploader(
+
+            "Upload Profile Picture",
+
+            type=[
+                "jpg",
+                "jpeg",
+                "png"
+            ],
+
+            key="pfp"
         )
 
-        if uploaded:
+        if uploaded_pfp:
 
-            image = Image.open(uploaded)
+            image = Image.open(
+                uploaded_pfp
+            )
 
             cropped = st_cropper(
+
                 image,
+
                 realtime_update=True,
-                aspect_ratio=(1,1),
-                box_color="#7C4DFF"
+
+                box_color="#7C4DFF",
+
+                aspect_ratio=(1,1)
             )
 
-            preview = make_circle_image(
-                cropped
-            )
+            if st.button(
+                "Save Profile Picture"
+            ):
 
-            st.image(
-                preview,
-                width=150
-            )
+                final_img = make_circle_image(
+                    cropped
+                )
 
-            col1, col2 = st.columns(2)
+                base64_img = image_to_base64(
+                    final_img
+                )
 
-            with col1:
+                st.session_state.profile_pic = base64_img
 
-                if st.button("Save"):
+                cookies["profile_pic"] = base64_img
 
-                    save_profile_picture(
-                        preview
-                    )
+                cookies.save()
 
-                    st.session_state.change_pfp = False
+                st.session_state.change_pfp = False
 
-                    st.rerun()
+                st.rerun()
 
-            with col2:
+    # ==================================================
+    # USER INFO
+    # ==================================================
 
-                if st.button("Cancel"):
-
-                    st.session_state.change_pfp = False
-
-                    st.rerun()
-
-    st.write(
-        f"👤 {st.session_state.user_name}"
+    st.markdown(
+        f"### {st.session_state.user_name}"
     )
 
     st.caption(
@@ -653,184 +391,231 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # =========================================
-    # SIDE BY SIDE OPTIONS
-    # =========================================
+    # ==================================================
+    # MODEL + SUBJECT
+    # ==================================================
 
-    col1, col2 = st.columns(2)
+    col1,col2 = st.columns(2)
 
     with col1:
 
         model_choice = st.selectbox(
-            "🤖 Model",
-            ["Gemini","Llama3"]
+
+            "AI",
+
+            [
+                "Gemini",
+                "Llama3"
+            ]
         )
 
     with col2:
 
         subject = st.selectbox(
-            "📚 Subject",
+
+            "Subject",
+
             [
+
                 "Physics",
+
                 "Chemistry",
+
                 "Biology",
+
                 "Higher Math",
+
                 "Bangla",
+
                 "English",
-                "ICT"
+
+                "ICT",
+
+                "Economics",
+
+                "Accounting",
+
+                "History"
             ]
         )
 
     st.markdown("---")
+
+    # ==================================================
+    # NEW CHAT
+    # ==================================================
 
     if st.button(
         "➕ New Chat",
         use_container_width=True
     ):
 
-        create_new_chat()
+        st.session_state.current_chat_id = None
+
+        st.session_state.messages = []
 
         st.rerun()
 
-    search_query = st.text_input(
-        "🔍 Search chats"
+    # ==================================================
+    # SEARCH CHAT
+    # ==================================================
+
+    search_chat = st.text_input(
+        "🔍 Search History"
     )
 
-    st.markdown("### 💬 Chats")
+    # ==================================================
+    # CHAT HISTORY
+    # ==================================================
 
-    chat_list = get_chat_list()
-
-    filtered = []
+    chat_list = get_chat_list(
+        db,
+        USER_ID
+    )
 
     for chat in chat_list:
 
-        if search_query.lower() in chat["title"].lower():
+        title = chat["title"]
 
-            filtered.append(chat)
+        chat_id = chat["chat_id"]
 
-    for chat in filtered:
+        if search_chat.lower() not in title.lower():
 
-        chat_col1, chat_col2 = st.columns([8,1])
+            continue
 
-        with chat_col1:
+        c1,c2 = st.columns([5,1])
+
+        with c1:
 
             if st.button(
-                f"{chat['title']}",
-                key=f"chat_{chat['chat_id']}",
-                use_container_width=True
+
+                title,
+
+                key=f"chat_{chat_id}"
+
             ):
 
-                st.session_state.current_chat_id = chat["chat_id"]
+                st.session_state.current_chat_id = chat_id
 
                 st.session_state.messages = load_messages(
-                    chat["chat_id"]
+
+                    db,
+
+                    USER_ID,
+
+                    chat_id
                 )
 
                 st.rerun()
 
-        with chat_col2:
+        with c2:
 
             if st.button(
+
                 "🗑️",
-                key=f"delete_{chat['chat_id']}"
+
+                key=f"delete_{chat_id}"
+
             ):
 
-                delete_chat(chat["chat_id"])
+                delete_chat(
 
-                if st.session_state.current_chat_id == chat["chat_id"]:
+                    db,
+
+                    USER_ID,
+
+                    chat_id
+                )
+
+                # current chat deleted
+                if (
+
+                    st.session_state.current_chat_id
+
+                    ==
+
+                    chat_id
+                ):
 
                     st.session_state.current_chat_id = None
+
                     st.session_state.messages = []
 
                 st.rerun()
 
     st.markdown("---")
 
+    # ==================================================
+    # LOGOUT
+    # ==================================================
+
     if st.button(
         "🚪 Logout",
         use_container_width=True
     ):
 
-        logout()
+        cookies["logged_in"] = ""
+
+        cookies["user_email"] = ""
+
+        cookies["user_name"] = ""
+
+        cookies["profile_pic"] = ""
+
+        cookies.save()
+
+        st.session_state.logged_in = False
+
+        st.session_state.user_email = ""
+
+        st.session_state.user_name = ""
+
+        st.session_state.messages = []
+
+        st.session_state.current_chat_id = None
 
         st.rerun()
-
-# =========================================================
-# MAIN HEADER
-# =========================================================
-
-st.title("🎓 HSC Dual AI Tutor")
-
-st.subheader(
-    "Llama3 এবং Gemini-র সমন্বয়ে HSC প্রস্তুতি"
-)
-
-st.write(
-    "তোমার HSC পরীক্ষার যেকোনো বিষয়ের প্রশ্ন এখানে জিজ্ঞেস করো!"
-)
-
-st.caption("🚀 Created by ALhaz")
-
-# =========================================================
+# ======================================================
 # SHOW CHAT
-# =========================================================
+# ======================================================
 
 for msg in st.session_state.messages:
 
     with st.chat_message(msg["role"]):
 
-        st.markdown(msg["content"])
-
-# =========================================================
-# GEMINI FUNCTION
-# =========================================================
-
-def call_gemini(prompt_text, image_obj=None):
-
-    client = genai.Client(
-        api_key=GEMINI_API_KEY
-    )
-
-    if image_obj:
-
-        response = client.models.generate_content(
-
-            model="gemini-2.5-flash",
-
-            contents=[
-                prompt_text,
-                image_obj
-            ]
+        st.markdown(
+            msg["content"]
         )
 
-    else:
-
-        response = client.models.generate_content(
-
-            model="gemini-2.5-flash",
-
-            contents=prompt_text
-        )
-
-    return response.text
-
-# =========================================================
+# ======================================================
 # CHAT INPUT
-# =========================================================
+# ======================================================
 
 prompt = st.chat_input(
+
     "প্রশ্ন লেখো অথবা ছবি/PDF আপলোড করো...",
+
     accept_file=True,
-    file_type=["jpg","jpeg","png","pdf"]
+
+    file_type=[
+        "jpg",
+        "jpeg",
+        "png",
+        "pdf"
+    ]
 )
 
-# =========================================================
+# ======================================================
 # MAIN CHAT SYSTEM
-# =========================================================
+# ======================================================
 
 if prompt:
 
-    user_text = prompt.text if prompt.text else ""
+    user_text = (
+        prompt.text
+        if prompt.text
+        else ""
+    )
 
     uploaded_files = prompt.files
 
@@ -838,38 +623,69 @@ if prompt:
 
     pdf_text = ""
 
-    # =====================================================
+    # ==================================================
     # FILE PROCESSING
-    # =====================================================
+    # ==================================================
 
-    if uploaded_files:
+    if uploaded_files and len(uploaded_files) > 0:
 
-        file = uploaded_files[0]
+        uploaded_file = uploaded_files[0]
+
+        file_name = uploaded_file.name.lower()
 
         # IMAGE
+        if file_name.endswith(
 
-        if file.name.lower().endswith(
-            (".jpg",".jpeg",".png")
+            (
+                ".jpg",
+                ".jpeg",
+                ".png"
+            )
         ):
 
-            image_to_send = Image.open(file)
+            image_to_send = Image.open(
+                uploaded_file
+            )
 
         # PDF
+        elif file_name.endswith(".pdf"):
 
-        elif file.name.lower().endswith(".pdf"):
+            try:
 
-            reader = PyPDF2.PdfReader(file)
+                reader = PyPDF2.PdfReader(
+                    uploaded_file
+                )
 
-            for page in reader.pages:
+                for page in reader.pages:
 
-                txt = page.extract_text()
+                    txt = page.extract_text()
 
-                if txt:
-                    pdf_text += txt
+                    if txt:
 
-    # =====================================================
+                        pdf_text += txt
+
+            except Exception as e:
+
+                st.error(
+                    f"PDF Error: {e}"
+                )
+
+    # ==================================================
+    # CREATE CHAT ONLY WHEN FIRST MESSAGE
+    # ==================================================
+
+    if not st.session_state.current_chat_id:
+
+        st.session_state.current_chat_id = create_chat(
+
+            db,
+
+            USER_ID
+        )
+
+    # ==================================================
     # FINAL PROMPT
-    # =====================================================
+    # ======================================================
 
     final_prompt = f"""
 
@@ -886,13 +702,13 @@ if prompt:
 
         final_prompt += f"""
 
-PDF:
+PDF Content:
 {pdf_text[:12000]}
 """
 
-    # =====================================================
+    # ==================================================
     # SHOW USER MESSAGE
-    # =====================================================
+    # ==================================================
 
     with st.chat_message("user"):
 
@@ -904,118 +720,144 @@ PDF:
             )
 
         st.markdown(
+
             user_text
+
             if user_text
-            else "[📎 File]"
+
+            else "[📎 File Uploaded]"
         )
 
     display_text = (
+
         user_text
+
         if user_text
-        else "[📎 File]"
+
+        else "[📎 File Uploaded]"
     )
+
+    # ==================================================
+    # SAVE USER MESSAGE
+    # ==================================================
 
     st.session_state.messages.append({
 
         "role":"user",
-        "content":display_text
 
+        "content":display_text
     })
 
     save_message(
+
+        db,
+
+        USER_ID,
+
+        st.session_state.current_chat_id,
+
         "user",
+
         display_text
     )
 
-    # =====================================================
-    # ASSISTANT RESPONSE
-    # =====================================================
+    # ==================================================
+    # AUTO CHAT TITLE
+    # ==================================================
+
+    if len(st.session_state.messages) <= 1:
+
+        update_chat_title(
+
+            db,
+
+            USER_ID,
+
+            st.session_state.current_chat_id,
+
+            display_text
+        )
+
+    # ==================================================
+    # AI RESPONSE
+    # ==================================================
 
     with st.chat_message("assistant"):
 
         placeholder = st.empty()
 
-        try:
+        # GEMINI
+        if model_choice == "Gemini":
 
-            # =============================================
-            # GEMINI
-            # =============================================
+            full_response = smart_ai_response(
 
-            if model_choice == "Gemini":
+                GEMINI_API_KEY,
 
-                full_response = call_gemini(
-                    final_prompt,
-                    image_to_send
-                )
+                GROQ_API_KEY,
 
-            # =============================================
-            # LLAMA3
-            # =============================================
+                final_prompt,
+
+                subject,
+
+                image_to_send
+            )
+
+        # LLAMA3
+        else:
+
+            if image_to_send:
+
+                full_response = """
+
+⚠️ Llama3 ছবি বুঝতে পারে না।
+
+ছবি/PDF এর জন্য Gemini ব্যবহার করো।
+"""
 
             else:
 
-                if image_to_send:
+                full_response = call_llama(
 
-                    full_response = (
-                        "⚠️ Llama3 image support করে না। Gemini ব্যবহার করো।"
-                    )
+                    GROQ_API_KEY,
 
-                else:
+                    final_prompt,
 
-                    client = Groq(
-                        api_key=GROQ_API_KEY
-                    )
+                    subject
+                )
 
-                    completion = client.chat.completions.create(
-
-                        model="llama-3.3-70b-versatile",
-
-                        messages=[
-
-                            {
-                                "role":"system",
-                                "content":
-                                "You are an HSC teacher answering in Bengali."
-                            },
-
-                            {
-                                "role":"user",
-                                "content":final_prompt
-                            }
-
-                        ]
-                    )
-
-                    full_response = completion \
-                        .choices[0] \
-                        .message.content
-
-        except Exception as e:
-
-            full_response = str(e)
-
-        # =================================================
+        # ==================================================
         # TYPING EFFECT
-        # =================================================
+        # ==================================================
 
-        typed = ""
+        typing_effect(
 
-        for char in full_response:
+            placeholder,
 
-            typed += char
+            full_response,
 
-            placeholder.markdown(typed)
+            speed=0.002
+        )
 
-            time.sleep(0.002)
+        # ==================================================
+        # SAVE ASSISTANT MESSAGE
+        # ==================================================
 
         st.session_state.messages.append({
 
             "role":"assistant",
-            "content":full_response
 
+            "content":full_response
         })
 
         save_message(
+
+            db,
+
+            USER_ID,
+
+            st.session_state.current_chat_id,
+
             "assistant",
+
             full_response
         )
