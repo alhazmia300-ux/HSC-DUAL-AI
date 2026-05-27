@@ -42,7 +42,7 @@ GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 
 FIREBASE_API_KEY = st.secrets["FIREBASE_API_KEY"]
 
-firebase_json = json.loads(
+firebase_json = dict(
     st.secrets["FIREBASE_CREDENTIALS"]
 )
 
