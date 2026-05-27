@@ -66,7 +66,6 @@ section[data-testid="stSidebar"]{
     overflow:hidden;
     border:4px solid #7C4DFF;
     box-shadow:0 0 25px rgba(124,77,255,0.75);
-    cursor:pointer;
 }
 
 .profile-circle img{
@@ -686,8 +685,9 @@ with st.sidebar:
         with col1:
 
             if st.button(
-                chat["title"],
-                key=chat["chat_id"]
+                f"💬 {chat['title']}",
+                key=chat["chat_id"],
+                use_container_width=True
             ):
 
                 st.session_state.current_chat_id = chat["chat_id"]
@@ -702,12 +702,11 @@ with st.sidebar:
 
             if st.button(
                 "🗑",
-                key="del_"+chat["chat_id"]
+                key="delete_"+chat["chat_id"],
+                use_container_width=True
             ):
 
-                delete_chat(
-                    chat["chat_id"]
-                )
+                delete_chat(chat["chat_id"])
 
                 if st.session_state.current_chat_id == chat["chat_id"]:
 
@@ -724,23 +723,6 @@ with st.sidebar:
     ):
 
         logout()
-
-        st.rerun()
-
-# =========================================================
-# TOP RIGHT NEW CHAT
-# =========================================================
-
-top1, top2 = st.columns([9,1])
-
-with top2:
-
-    if st.button(
-        "➕",
-        use_container_width=True
-    ):
-
-        create_new_chat()
 
         st.rerun()
 
