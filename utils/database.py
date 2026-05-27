@@ -20,9 +20,13 @@ def init_firestore(firebase_json_raw):
             st.error(f"Firebase Configuration Error: {e}")
     return firestore.client()
 import hashlib
+import streamlit as st
 
 def get_user_id():
-    import streamlit as st
-    email = st.session_state.user_email if st.session_state.user_email else "guest"
+    # কোনো আর্গুমেন্ট ছাড়া সরাসরি সেশন স্টেট রিড করবে
+    email = st.session_state.get("user_email", "guest")
+    if not email:
+        email = "guest"
     return hashlib.md5(email.encode()).hexdigest()
+
 
