@@ -104,10 +104,7 @@ if cookies.get("logged_in") == "true":
     if not st.session_state.get("session_started"):
         st.session_state.messages = []
         st.session_state.current_chat_id = None
-        cookies["current_chat_id"] = ""
-        cookies.save()
         st.session_state.session_started = True
-
 # ======================================================
 # LOGIN / SIGNUP PAGE
 # ======================================================
