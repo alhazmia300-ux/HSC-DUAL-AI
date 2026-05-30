@@ -228,46 +228,49 @@ with st.sidebar:
         st.rerun()
 
     # CHAT HISTORY
-    st.markdown("### 💬 Chat History")
-    search_chat = st.text_input(
-        "search",
-        label_visibility="collapsed",
-        placeholder="🔍 Search history..."
-    )
+    # CHAT HISTORY
+st.markdown("### 💬 Chat History")
+search_chat = st.text_input(
+    "search",
+    label_visibility="collapsed",
+    placeholder="🔍 Search history..."
+)
 
-    try:
-        chat_list = get_chat_list(db, USER_ID)
-    except:
-        chat_list = []
+try:
+    chat_list = get_chat_list(db, USER_ID)
+except:
+    chat_list = []
 
-    filtered_chats = []
-    if chat_list:
-        for chat in chat_list:
-            if search_chat.lower() in chat["title"].lower():
-                filtered_chats.append(chat)
+filtered_chats = []
+if chat_list:
+    for chat in chat_list:
+        if search_chat.lower() in chat["title"].lower():
+            filtered_chats.append(chat)
 
-    if filtered_chats:
-        for chat in filtered_chats:
-            is_active = chat["chat_id"] == st.session_state.current_chat_id
-            title = f"✅ {chat['title']}" if is_active else chat["title"]
-            if st.button(title, key=f"chat_{chat['chat_id']}", use_container_width=True):
-                st.session_state.current_chat_id = chat["chat_id"]
-                st.session_state.messages = load_messages(db, USER_ID, chat["chat_id"])
-                st.rerun()
+if filtered_chats:
+    for chat in filtered_chats:
+        is_active = chat["chat_id"] == st.session_state.current_chat_id
+        title = f"✅ {chat['title']}" if is_active else chat["title"]
+        if st.button(title, key=f"chat_{chat['chat_id']}", use_container_width=True):
+            st.session_state.current_chat_id = chat["chat_id"]
+            st.session_state.messages = load_messages(db, USER_ID, chat["chat_id"])
+            st.rerun()
 
-        if st.session_state.current_chat_id:
-            st.markdown("---")
-            if st.button("🗑️ Delete Current Chat", use_container_width=True):
-                delete_chat(db, USER_ID, st.session_state.current_chat_id)
-                st.session_state.current_chat_id = None
-                st.session_state.messages = []
-                st.rerun()
-    else:
-        st.caption("No past chats found.")
+    # Active chat delete
+    if st.session_state.current_chat_id:
+        if st.button("🗑️ Delete This Chat", use_container_width=True):
+            delete_chat(db, USER_ID, st.session_state.current_chat_id)
+            st.session_state.current_chat_id = None
+            st.session_state.messages = []
+            st.rerun()
+else:
+    st.caption("No past chats found.")
 
-    st.markdown("---")
+st.markdown("---")
 
-    # LOGOUT
+# LOGOUT + DELETE ALL
+col1, col2 = st.columns([3, 2])
+with col1:
     if st.button("🚪 Logout", use_container_width=True):
         cookies["logged_in"] = ""
         cookies["user_email"] = ""
@@ -279,6 +282,14 @@ with st.sidebar:
         st.session_state.user_name = ""
         st.session_state.messages = []
         st.session_state.current_chat_id = None
+        st.rerun()
+with col2:
+    if st.button("🗑️ All", use_container_width=True):
+        if chat_list:
+            for chat in chat_list:
+                delete_chat(db, USER_ID, chat["chat_id"])
+        st.session_state.current_chat_id = None
+        st.session_state.messages = []
         st.rerun()
 
 # ======================================================
