@@ -13,23 +13,14 @@ from utils.ai_models import *
 from utils.profile import *
 from utils.ui import *
 
-# ======================================================
-# PAGE CONFIG
-# ======================================================
 st.set_page_config(
     page_title="🎓 HSC Dual AI Tutor",
     page_icon="🎓",
     layout="wide"
 )
 
-# ======================================================
-# CSS
-# ======================================================
 load_css()
 
-# ======================================================
-# API KEYS & FIREBASE INIT
-# ======================================================
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 FIREBASE_API_KEY = st.secrets["FIREBASE_API_KEY"]
@@ -39,18 +30,13 @@ TELEGRAM_CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID")
 firebase_json = st.secrets["FIREBASE_CREDENTIALS"]
 db = init_firestore(firebase_json)
 
-# ======================================================
-# TELEGRAM NOTIFICATION
-# ======================================================
 def send_telegram(user_email, question, model):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
     msg = f"""
 🔔 নতুন প্রশ্ন!
-
 👤 User: {user_email}
 🤖 Model: {model}
-
 ❓ Question:
 {question}
 """
@@ -63,9 +49,6 @@ def send_telegram(user_email, question, model):
     except:
         pass
 
-# ======================================================
-# COOKIES
-# ======================================================
 cookies = EncryptedCookieManager(
     prefix="hsc_ai_",
     password="ALhaz_secure_password"
@@ -74,9 +57,6 @@ cookies = EncryptedCookieManager(
 if not cookies.ready():
     st.stop()
 
-# ======================================================
-# SESSION STATE DEFAULTS
-# ======================================================
 defaults = {
     "logged_in": False,
     "user_email": "",
@@ -94,35 +74,25 @@ for k, v in defaults.items():
 if "session_started" not in st.session_state:
     st.session_state.session_started = True
 
-# ======================================================
-# AUTO LOGIN
-# ======================================================
 if cookies.get("logged_in") == "true":
     st.session_state.logged_in = True
     st.session_state.user_email = cookies.get("user_email")
     st.session_state.user_name = cookies.get("user_name")
     st.session_state.profile_pic = cookies.get("profile_pic")
 
-# ======================================================
-# LOGIN / SIGNUP PAGE
-# ======================================================
 if not st.session_state.logged_in:
     st.title("Welcome my friend")
     st.caption("This platform is created by ALhaz")
-
     option = st.selectbox("Choose Option", ["Login", "Sign Up"])
-
     with st.form("auth"):
         name = st.text_input("Enter your name")
         email = st.text_input("Enter email/phone number")
         password = st.text_input("Password", type="password")
         submit = st.form_submit_button("Continue")
-
     if submit:
         if not name.strip():
             st.error("Name required")
             st.stop()
-
         if option == "Sign Up":
             result = signup(email, password, FIREBASE_API_KEY)
             if "email" in result:
@@ -137,7 +107,6 @@ if not st.session_state.logged_in:
                 st.session_state.user_name = name
                 st.session_state.messages = []
                 st.session_state.current_chat_id = None
-
                 cookies["logged_in"] = "true"
                 cookies["user_email"] = result["email"]
                 cookies["user_name"] = name
@@ -147,17 +116,7 @@ if not st.session_state.logged_in:
                 st.error(result.get("error", {}).get("message"))
     st.stop()
 
-# ======================================================
-# USER ID
-# ======================================================
 USER_ID = get_user_id(st.session_state.user_email)
-
-# ======================================================
-# HEADER
-# ======================================================
-st.title("🎓 HSC Dual AI Tutor")
-st.subheader("Llama3 এবং Gemini-র সমন্বয়ে HSC প্রস্তুতি")
-st.caption("🚀 Created by ALhaz")
 
 # ======================================================
 # SIDEBAR
@@ -165,7 +124,6 @@ st.caption("🚀 Created by ALhaz")
 with st.sidebar:
     st.markdown("## ⚙️ Settings")
 
-    # PROFILE SECTION
     st.markdown('<div class="profile-center">', unsafe_allow_html=True)
     if st.session_state.profile_pic:
         st.markdown(
@@ -209,7 +167,6 @@ with st.sidebar:
     st.caption(st.session_state.user_email)
     st.markdown("---")
 
-    # MODEL + SUBJECT
     col1, col2 = st.columns(2)
     with col1:
         model_choice = st.selectbox("AI Model", ["Gemini", "Llama3"])
@@ -221,76 +178,78 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # NEW CHAT
     if st.button("➕ New Chat", use_container_width=True):
         st.session_state.current_chat_id = None
         st.session_state.messages = []
         st.rerun()
 
-    # CHAT HISTORY
-    # CHAT HISTORY
-st.markdown("### 💬 Chat History")
-search_chat = st.text_input(
-    "search",
-    label_visibility="collapsed",
-    placeholder="🔍 Search history..."
-)
+    st.markdown("### 💬 Chat History")
+    search_chat = st.text_input(
+        "search",
+        label_visibility="collapsed",
+        placeholder="🔍 Search history..."
+    )
 
-try:
-    chat_list = get_chat_list(db, USER_ID)
-except:
-    chat_list = []
+    try:
+        chat_list = get_chat_list(db, USER_ID)
+    except:
+        chat_list = []
 
-filtered_chats = []
-if chat_list:
-    for chat in chat_list:
-        if search_chat.lower() in chat["title"].lower():
-            filtered_chats.append(chat)
+    filtered_chats = []
+    if chat_list:
+        for chat in chat_list:
+            if search_chat.lower() in chat["title"].lower():
+                filtered_chats.append(chat)
 
-if filtered_chats:
-    for chat in filtered_chats:
-        is_active = chat["chat_id"] == st.session_state.current_chat_id
-        title = f"✅ {chat['title']}" if is_active else chat["title"]
-        if st.button(title, key=f"chat_{chat['chat_id']}", use_container_width=True):
-            st.session_state.current_chat_id = chat["chat_id"]
-            st.session_state.messages = load_messages(db, USER_ID, chat["chat_id"])
+    if filtered_chats:
+        for chat in filtered_chats:
+            is_active = chat["chat_id"] == st.session_state.current_chat_id
+            title = f"✅ {chat['title']}" if is_active else chat["title"]
+            if st.button(title, key=f"chat_{chat['chat_id']}", use_container_width=True):
+                st.session_state.current_chat_id = chat["chat_id"]
+                st.session_state.messages = load_messages(db, USER_ID, chat["chat_id"])
+                st.rerun()
+
+        if st.session_state.current_chat_id:
+            if st.button("🗑️ Delete This Chat", use_container_width=True):
+                delete_chat(db, USER_ID, st.session_state.current_chat_id)
+                st.session_state.current_chat_id = None
+                st.session_state.messages = []
+                st.rerun()
+    else:
+        st.caption("No past chats found.")
+
+    st.markdown("---")
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("🚪 Logout", use_container_width=True):
+            cookies["logged_in"] = ""
+            cookies["user_email"] = ""
+            cookies["user_name"] = ""
+            cookies["profile_pic"] = ""
+            cookies.save()
+            st.session_state.logged_in = False
+            st.session_state.user_email = ""
+            st.session_state.user_name = ""
+            st.session_state.messages = []
+            st.session_state.current_chat_id = None
             st.rerun()
-
-    # Active chat delete
-    if st.session_state.current_chat_id:
-        if st.button("🗑️ Delete This Chat", use_container_width=True):
-            delete_chat(db, USER_ID, st.session_state.current_chat_id)
+    with col_b:
+        if st.button("🗑️ All Chats", use_container_width=True):
+            if chat_list:
+                for chat in chat_list:
+                    delete_chat(db, USER_ID, chat["chat_id"])
             st.session_state.current_chat_id = None
             st.session_state.messages = []
             st.rerun()
-else:
-    st.caption("No past chats found.")
 
-st.markdown("---")
-
-# LOGOUT + DELETE ALL
-col1, col2 = st.columns([3, 2])
-with col1:
-    if st.button("🚪 Logout", use_container_width=True):
-        cookies["logged_in"] = ""
-        cookies["user_email"] = ""
-        cookies["user_name"] = ""
-        cookies["profile_pic"] = ""
-        cookies.save()
-        st.session_state.logged_in = False
-        st.session_state.user_email = ""
-        st.session_state.user_name = ""
-        st.session_state.messages = []
-        st.session_state.current_chat_id = None
-        st.rerun()
-with col2:
-    if st.button("🗑️ All", use_container_width=True):
-        if chat_list:
-            for chat in chat_list:
-                delete_chat(db, USER_ID, chat["chat_id"])
-        st.session_state.current_chat_id = None
-        st.session_state.messages = []
-        st.rerun()
+# ======================================================
+# HEADER
+# ======================================================
+st.title("🎓 HSC Dual AI Tutor")
+st.subheader("Llama3 এবং Gemini-র সমন্বয়ে HSC প্রস্তুতি")
+st.caption("🚀 Created by ALhaz")
 
 # ======================================================
 # SHOW CHAT MESSAGES
@@ -320,7 +279,6 @@ if prompt:
     if uploaded_files and len(uploaded_files) > 0:
         uploaded_file = uploaded_files[0]
         file_name = uploaded_file.name.lower()
-
         if file_name.endswith((".jpg", ".jpeg", ".png")):
             image_to_send = Image.open(uploaded_file)
         elif file_name.endswith(".pdf"):
