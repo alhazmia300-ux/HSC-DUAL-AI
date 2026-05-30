@@ -75,7 +75,7 @@ if not cookies.ready():
     st.stop()
 
 # ======================================================
-# SESSION STATE
+# SESSION STATE DEFAULTS
 # ======================================================
 defaults = {
     "logged_in": False,
@@ -91,6 +91,10 @@ for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
+# Session started flag — app close করলে reset হয়
+if "session_started" not in st.session_state:
+    st.session_state.session_started = True
+
 # ======================================================
 # AUTO LOGIN
 # ======================================================
@@ -100,11 +104,6 @@ if cookies.get("logged_in") == "true":
     st.session_state.user_name = cookies.get("user_name")
     st.session_state.profile_pic = cookies.get("profile_pic")
 
-    # প্রতিবার নতুন session এ fresh start
-    if not st.session_state.get("session_started"):
-        st.session_state.messages = []
-        st.session_state.current_chat_id = None
-        st.session_state.session_started = True
 # ======================================================
 # LOGIN / SIGNUP PAGE
 # ======================================================
@@ -112,10 +111,7 @@ if not st.session_state.logged_in:
     st.title("Welcome my friend")
     st.caption("This platform is created by ALhaz")
 
-    option = st.selectbox(
-        "Choose Option",
-        ["Login", "Sign Up"]
-    )
+    option = st.selectbox("Choose Option", ["Login", "Sign Up"])
 
     with st.form("auth"):
         name = st.text_input("Enter your name")
@@ -140,14 +136,12 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.user_email = result["email"]
                 st.session_state.user_name = name
-                # নতুন login এ fresh start
                 st.session_state.messages = []
                 st.session_state.current_chat_id = None
 
                 cookies["logged_in"] = "true"
                 cookies["user_email"] = result["email"]
                 cookies["user_name"] = name
-                cookies["current_chat_id"] = ""
                 cookies.save()
                 st.rerun()
             else:
@@ -190,10 +184,19 @@ with st.sidebar:
         st.session_state.change_pfp = True
 
     if st.session_state.change_pfp:
-        uploaded_pfp = st.file_uploader("Upload Profile Picture", type=["jpg", "jpeg", "png"], key="pfp")
+        uploaded_pfp = st.file_uploader(
+            "Upload Profile Picture",
+            type=["jpg", "jpeg", "png"],
+            key="pfp"
+        )
         if uploaded_pfp:
             image = Image.open(uploaded_pfp)
-            cropped = st_cropper(image, realtime_update=True, box_color="#7C4DFF", aspect_ratio=(1,1))
+            cropped = st_cropper(
+                image,
+                realtime_update=True,
+                box_color="#7C4DFF",
+                aspect_ratio=(1, 1)
+            )
             if st.button("Save Profile Picture", use_container_width=True):
                 final_img = make_circle_image(cropped)
                 base64_img = image_to_base64(final_img)
@@ -223,16 +226,14 @@ with st.sidebar:
     if st.button("➕ New Chat", use_container_width=True):
         st.session_state.current_chat_id = None
         st.session_state.messages = []
-        cookies["current_chat_id"] = ""
-        cookies.save()
         st.rerun()
 
     # CHAT HISTORY
-    st.markdown("### 💬 Chats History")
+    st.markdown("### 💬 Chat History")
     search_chat = st.text_input(
-        "🔍 Search History",
+        "search",
         label_visibility="collapsed",
-        placeholder="Search history..."
+        placeholder="🔍 Search history..."
     )
 
     try:
@@ -247,47 +248,24 @@ with st.sidebar:
                 filtered_chats.append(chat)
 
     if filtered_chats:
-        chat_options = {chat["title"]: chat["chat_id"] for chat in filtered_chats}
-
-        default_index = 0
-        current_id = st.session_state.get("current_chat_id")
-        if current_id:
-            for i, chat in enumerate(filtered_chats):
-                if chat.get("chat_id") == current_id:
-                    default_index = i
-                    break
-
-        c1, c2 = st.columns([4, 1])
-        with c1:
-            selected_chat_title = st.selectbox(
-                "Select Chat",
-                options=list(chat_options.keys()),
-                index=default_index,
-                label_visibility="collapsed",
-                key="chat_selector_dropdown"
-            )
-
-        selected_chat_id = chat_options.get(selected_chat_title)
-
-        if selected_chat_id and selected_chat_id != st.session_state.get("current_chat_id"):
-            st.session_state.current_chat_id = selected_chat_id
-            st.session_state.messages = load_messages(db, USER_ID, selected_chat_id)
-            cookies["current_chat_id"] = selected_chat_id
-            cookies.save()
-            st.rerun()
-
-        with c2:
-            if st.button("🗑️", key="delete_current_chat_btn", use_container_width=True):
-                if selected_chat_id:
-                    delete_chat(db, USER_ID, selected_chat_id)
-                    if st.session_state.current_chat_id == selected_chat_id:
+        for chat in filtered_chats:
+            c1, c2 = st.columns([5, 1])
+            with c1:
+                # Active chat highlight
+                label = f"**{chat['title']}**" if chat["chat_id"] == st.session_state.current_chat_id else chat["title"]
+                if st.button(label, key=f"chat_{chat['chat_id']}", use_container_width=True):
+                    st.session_state.current_chat_id = chat["chat_id"]
+                    st.session_state.messages = load_messages(db, USER_ID, chat["chat_id"])
+                    st.rerun()
+            with c2:
+                if st.button("🗑️", key=f"del_{chat['chat_id']}", use_container_width=True):
+                    delete_chat(db, USER_ID, chat["chat_id"])
+                    if st.session_state.current_chat_id == chat["chat_id"]:
                         st.session_state.current_chat_id = None
                         st.session_state.messages = []
-                        cookies["current_chat_id"] = ""
-                        cookies.save()
                     st.rerun()
     else:
-        st.sidebar.caption("No past chats found.")
+        st.caption("No past chats found.")
 
     st.markdown("---")
 
@@ -297,7 +275,6 @@ with st.sidebar:
         cookies["user_email"] = ""
         cookies["user_name"] = ""
         cookies["profile_pic"] = ""
-        cookies["current_chat_id"] = ""
         cookies.save()
         st.session_state.logged_in = False
         st.session_state.user_email = ""
@@ -338,7 +315,6 @@ if prompt:
 
         if file_name.endswith((".jpg", ".jpeg", ".png")):
             image_to_send = Image.open(uploaded_file)
-
         elif file_name.endswith(".pdf"):
             try:
                 reader = PyPDF2.PdfReader(uploaded_file)
@@ -352,8 +328,6 @@ if prompt:
     # CREATE CHAT SESSION
     if not st.session_state.current_chat_id:
         st.session_state.current_chat_id = create_chat(db, USER_ID)
-        cookies["current_chat_id"] = st.session_state.current_chat_id
-        cookies.save()
 
     # SYSTEM PROMPT
     final_prompt = f"তুমি একজন {subject} বিষয়ের HSC শিক্ষক।\nসহজ বাংলায় উত্তর দাও।\n\nপ্রশ্ন:\n{user_text}\n"
