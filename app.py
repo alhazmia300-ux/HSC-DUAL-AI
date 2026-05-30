@@ -251,15 +251,31 @@ with st.sidebar:
         for chat in filtered_chats:
             is_active = chat["chat_id"] == st.session_state.current_chat_id
             title = f"✅ {chat['title']}" if is_active else chat["title"]
-
-            col1, col2 = st.columns([6, 1])
-            with col1:
-                if st.button(title, key=f"chat_{chat['chat_id']}", use_container_width=True):
+            
+            st.markdown(
+                f"""<div style="display:flex;align-items:center;
+                gap:4px;margin-bottom:2px;"></div>""",
+                unsafe_allow_html=True
+            )
+            
+            c1, c2 = st.columns([5, 1])
+            with c1:
+                if st.button(
+                    title,
+                    key=f"chat_{chat['chat_id']}",
+                    use_container_width=True
+                ):
                     st.session_state.current_chat_id = chat["chat_id"]
-                    st.session_state.messages = load_messages(db, USER_ID, chat["chat_id"])
+                    st.session_state.messages = load_messages(
+                        db, USER_ID, chat["chat_id"]
+                    )
                     st.rerun()
-            with col2:
-                if st.button("🗑", key=f"del_{chat['chat_id']}"):
+            with c2:
+                if st.button(
+                    "🗑",
+                    key=f"del_{chat['chat_id']}",
+                    use_container_width=False
+                ):
                     delete_chat(db, USER_ID, chat["chat_id"])
                     if st.session_state.current_chat_id == chat["chat_id"]:
                         st.session_state.current_chat_id = None
