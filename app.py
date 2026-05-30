@@ -100,15 +100,18 @@ if cookies.get("logged_in") == "true":
     st.session_state.user_name = cookies.get("user_name")
     st.session_state.profile_pic = cookies.get("profile_pic")
 
-    # রিফ্রেশ করলে current chat restore করো
+    # শুধু রিফ্রেশে chat restore করো
+    # কিন্তু নতুন session এ নতুন chat শুরু হবে
     saved_chat_id = cookies.get("current_chat_id")
-    if saved_chat_id and not st.session_state.current_chat_id:
+    if saved_chat_id and not st.session_state.get("session_started"):
         st.session_state.current_chat_id = saved_chat_id
         st.session_state.messages = load_messages(
             db,
             get_user_id(cookies.get("user_email")),
             saved_chat_id
         )
+    
+    st.session_state.session_started = True
 
 # ======================================================
 # LOGIN / SIGNUP PAGE
