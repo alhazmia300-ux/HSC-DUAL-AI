@@ -9,13 +9,13 @@ import time
 # INIT FIRESTORE
 # ======================================================
 @st.cache_resource
-def init_firestore(firebase_json_raw):
+def init_firestore(_firebase_json_raw):
     if not firebase_admin._apps:
         try:
-            if isinstance(firebase_json_raw, str):
-                firebase_info = json.loads(firebase_json_raw)
+            if isinstance(_firebase_json_raw, str):
+                firebase_info = json.loads(_firebase_json_raw)
             else:
-                firebase_info = dict(firebase_json_raw)
+                firebase_info = dict(_firebase_json_raw)
             cred = credentials.Certificate(firebase_info)
             firebase_admin.initialize_app(cred)
         except Exception as e:
