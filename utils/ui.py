@@ -9,7 +9,6 @@ def load_css():
 
     st.markdown(
         """
-
 <style>
 
 .block-container{
@@ -61,8 +60,27 @@ section[data-testid="stSidebar"]{
     object-fit:cover;
 }
 
-</style>
+/* Chat History Buttons পাশাপাশি */
+section[data-testid="stSidebar"] .stHorizontalBlock {
+    gap: 4px !important;
+    align-items: center !important;
+}
 
+section[data-testid="stSidebar"] .stHorizontalBlock > div:first-child {
+    flex: 6 !important;
+}
+
+section[data-testid="stSidebar"] .stHorizontalBlock > div:last-child {
+    flex: 1 !important;
+    min-width: 40px !important;
+}
+
+section[data-testid="stSidebar"] .stHorizontalBlock > div:last-child button {
+    padding: 0 !important;
+    min-width: 36px !important;
+}
+
+</style>
         """,
         unsafe_allow_html=True
     )
