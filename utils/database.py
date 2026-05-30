@@ -46,12 +46,17 @@ def get_chat_list(db, user_id):
     try:
         docs = db.collection("chats").document(user_id)\
                  .collection("sessions")\
-                 .order_by("created_at", direction=firestore.Query.DESCENDING)\
                  .stream()
-        return [
-            {"chat_id": d.id, "title": d.to_dict().get("title", "New Chat")}
-            for d in docs
-        ]
+        result = []
+        for d in docs:
+            data = d.to_dict()
+            result.append({
+                "chat_id": d.id,
+                "title": data.get("title", "New Chat"),
+                "created_at": data.get("created_at", 0)
+            })
+        result.sort(key=lambda x: x["created_at"], reverse=True)
+        return result
     except:
         return []
 
@@ -94,14 +99,17 @@ def load_messages(db, user_id, chat_id):
         docs = db.collection("chats").document(user_id)\
                  .collection("sessions").document(chat_id)\
                  .collection("messages")\
-                 .order_by("timestamp").stream()
-        return [
-            {
-                "role": d.to_dict()["role"],
-                "content": d.to_dict()["content"]
-            }
-            for d in docs
-        ]
+                 .stream()
+        result = []
+        for d in docs:
+            data = d.to_dict()
+            result.append({
+                "role": data.get("role", "user"),
+                "content": data.get("content", ""),
+                "timestamp": data.get("timestamp", 0)
+            })
+        result.sort(key=lambda x: x["timestamp"])
+        return [{"role": m["role"], "content": m["content"]} for m in result]
     except:
         return []
 
