@@ -100,6 +100,16 @@ if cookies.get("logged_in") == "true":
     st.session_state.user_name = cookies.get("user_name")
     st.session_state.profile_pic = cookies.get("profile_pic")
 
+    # রিফ্রেশ করলে current chat restore করো
+    saved_chat_id = cookies.get("current_chat_id")
+    if saved_chat_id and not st.session_state.current_chat_id:
+        st.session_state.current_chat_id = saved_chat_id
+        st.session_state.messages = load_messages(
+            db,
+            get_user_id(cookies.get("user_email")),
+            saved_chat_id
+        )
+
 # ======================================================
 # LOGIN / SIGNUP PAGE
 # ======================================================
@@ -135,10 +145,14 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.user_email = result["email"]
                 st.session_state.user_name = name
+                # নতুন login এ fresh start
+                st.session_state.messages = []
+                st.session_state.current_chat_id = None
 
                 cookies["logged_in"] = "true"
                 cookies["user_email"] = result["email"]
                 cookies["user_name"] = name
+                cookies["current_chat_id"] = ""
                 cookies.save()
                 st.rerun()
             else:
@@ -214,11 +228,17 @@ with st.sidebar:
     if st.button("➕ New Chat", use_container_width=True):
         st.session_state.current_chat_id = None
         st.session_state.messages = []
+        cookies["current_chat_id"] = ""
+        cookies.save()
         st.rerun()
 
     # CHAT HISTORY
     st.markdown("### 💬 Chats History")
-    search_chat = st.text_input("🔍 Search History", label_visibility="collapsed", placeholder="Search history...")
+    search_chat = st.text_input(
+        "🔍 Search History",
+        label_visibility="collapsed",
+        placeholder="Search history..."
+    )
 
     try:
         chat_list = get_chat_list(db, USER_ID)
@@ -257,6 +277,8 @@ with st.sidebar:
         if selected_chat_id and selected_chat_id != st.session_state.get("current_chat_id"):
             st.session_state.current_chat_id = selected_chat_id
             st.session_state.messages = load_messages(db, USER_ID, selected_chat_id)
+            cookies["current_chat_id"] = selected_chat_id
+            cookies.save()
             st.rerun()
 
         with c2:
@@ -266,6 +288,8 @@ with st.sidebar:
                     if st.session_state.current_chat_id == selected_chat_id:
                         st.session_state.current_chat_id = None
                         st.session_state.messages = []
+                        cookies["current_chat_id"] = ""
+                        cookies.save()
                     st.rerun()
     else:
         st.sidebar.caption("No past chats found.")
@@ -278,6 +302,7 @@ with st.sidebar:
         cookies["user_email"] = ""
         cookies["user_name"] = ""
         cookies["profile_pic"] = ""
+        cookies["current_chat_id"] = ""
         cookies.save()
         st.session_state.logged_in = False
         st.session_state.user_email = ""
@@ -332,6 +357,8 @@ if prompt:
     # CREATE CHAT SESSION
     if not st.session_state.current_chat_id:
         st.session_state.current_chat_id = create_chat(db, USER_ID)
+        cookies["current_chat_id"] = st.session_state.current_chat_id
+        cookies.save()
 
     # SYSTEM PROMPT
     final_prompt = f"তুমি একজন {subject} বিষয়ের HSC শিক্ষক।\nসহজ বাংলায় উত্তর দাও।\n\nপ্রশ্ন:\n{user_text}\n"
