@@ -60,13 +60,11 @@ def get_chat_list(db, user_id):
 # ======================================================
 def delete_chat(db, user_id, chat_id):
     try:
-        # messages সহ delete
         msgs = db.collection("chats").document(user_id)\
                  .collection("sessions").document(chat_id)\
                  .collection("messages").stream()
         for m in msgs:
             m.reference.delete()
-        # session delete
         db.collection("chats").document(user_id)\
           .collection("sessions").document(chat_id).delete()
     except:
@@ -80,7 +78,11 @@ def save_message(db, user_id, chat_id, role, content):
         db.collection("chats").document(user_id)\
           .collection("sessions").document(chat_id)\
           .collection("messages")\
-          .add({"role": role, "content": content, "timestamp": time.time()})
+          .add({
+              "role": role,
+              "content": content,
+              "timestamp": time.time()
+          })
     except:
         pass
 
@@ -94,7 +96,10 @@ def load_messages(db, user_id, chat_id):
                  .collection("messages")\
                  .order_by("timestamp").stream()
         return [
-            {"role": d.to_dict()["role"], "content": d.to_dict()["content"]}
+            {
+                "role": d.to_dict()["role"],
+                "content": d.to_dict()["content"]
+            }
             for d in docs
         ]
     except:
