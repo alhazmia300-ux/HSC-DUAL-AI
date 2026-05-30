@@ -91,7 +91,6 @@ for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-# Session started flag — app close করলে reset হয়
 if "session_started" not in st.session_state:
     st.session_state.session_started = True
 
@@ -229,26 +228,42 @@ with st.sidebar:
         st.rerun()
 
     # CHAT HISTORY
+    st.markdown("### 💬 Chat History")
+    search_chat = st.text_input(
+        "search",
+        label_visibility="collapsed",
+        placeholder="🔍 Search history..."
+    )
+
+    try:
+        chat_list = get_chat_list(db, USER_ID)
+    except:
+        chat_list = []
+
+    filtered_chats = []
+    if chat_list:
+        for chat in chat_list:
+            if search_chat.lower() in chat["title"].lower():
+                filtered_chats.append(chat)
+
     if filtered_chats:
-    for chat in filtered_chats:
-        is_active = chat["chat_id"] == st.session_state.current_chat_id
-        title = f"✅ {chat['title']}" if is_active else chat["title"]
+        for chat in filtered_chats:
+            is_active = chat["chat_id"] == st.session_state.current_chat_id
+            title = f"✅ {chat['title']}" if is_active else chat["title"]
+            if st.button(title, key=f"chat_{chat['chat_id']}", use_container_width=True):
+                st.session_state.current_chat_id = chat["chat_id"]
+                st.session_state.messages = load_messages(db, USER_ID, chat["chat_id"])
+                st.rerun()
 
-        if st.button(title, key=f"chat_{chat['chat_id']}", use_container_width=True):
-            st.session_state.current_chat_id = chat["chat_id"]
-            st.session_state.messages = load_messages(db, USER_ID, chat["chat_id"])
-            st.rerun()
-
-    # Active chat delete button
-    if st.session_state.current_chat_id:
-        st.markdown("---")
-        if st.button("🗑️ Delete Current Chat", use_container_width=True):
-            delete_chat(db, USER_ID, st.session_state.current_chat_id)
-            st.session_state.current_chat_id = None
-            st.session_state.messages = []
-            st.rerun()
-else:
-    st.caption("No past chats found.")
+        if st.session_state.current_chat_id:
+            st.markdown("---")
+            if st.button("🗑️ Delete Current Chat", use_container_width=True):
+                delete_chat(db, USER_ID, st.session_state.current_chat_id)
+                st.session_state.current_chat_id = None
+                st.session_state.messages = []
+                st.rerun()
+    else:
+        st.caption("No past chats found.")
 
     st.markdown("---")
 
@@ -291,7 +306,6 @@ if prompt:
     image_to_send = None
     pdf_text = ""
 
-    # FILE PROCESSING
     if uploaded_files and len(uploaded_files) > 0:
         uploaded_file = uploaded_files[0]
         file_name = uploaded_file.name.lower()
@@ -308,20 +322,16 @@ if prompt:
             except Exception as e:
                 st.error(f"PDF Error: {e}")
 
-    # CREATE CHAT SESSION
     if not st.session_state.current_chat_id:
         st.session_state.current_chat_id = create_chat(db, USER_ID)
 
-    # SYSTEM PROMPT
     final_prompt = f"তুমি একজন {subject} বিষয়ের HSC শিক্ষক।\nসহজ বাংলায় উত্তর দাও।\n\nপ্রশ্ন:\n{user_text}\n"
 
     if pdf_text:
         final_prompt += f"\nPDF Content:\n{pdf_text[:12000]}\n"
 
-    # DISPLAY USER MESSAGE
     display_text = user_text if user_text else "[📎 File Uploaded]"
 
-    # TELEGRAM NOTIFICATION
     send_telegram(st.session_state.user_email, display_text, model_choice)
 
     with st.chat_message("user"):
@@ -329,15 +339,12 @@ if prompt:
             st.image(image_to_send, width=250)
         st.markdown(display_text)
 
-    # SAVE USER MESSAGE
     st.session_state.messages.append({"role": "user", "content": display_text})
     save_message(db, USER_ID, st.session_state.current_chat_id, "user", display_text)
 
-    # AUTO TITLE UPDATE
     if len(st.session_state.messages) <= 2:
         update_chat_title(db, USER_ID, st.session_state.current_chat_id, display_text)
 
-    # AI RESPONSE
     with st.chat_message("assistant"):
         placeholder = st.empty()
 
